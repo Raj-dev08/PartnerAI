@@ -6,6 +6,8 @@ import http from "http"
 import { connectDB } from "./lib/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 
+import authRoutes from "./routes/auth.routes.js";
+
 
 
 const app = express()
@@ -24,6 +26,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
 
+app.use("/api/auth", authRoutes);
 
 
 app.use(errorHandler)

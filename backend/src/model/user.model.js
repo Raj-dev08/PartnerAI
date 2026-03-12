@@ -19,9 +19,13 @@ const userSchema = new mongoose.Schema(
         expoPushToken:{
             type:String,
         },
+        refreshTokenVersion:{
+            type:Number,
+            default:0,
+        },
         age:{
             type:Number,
-            required:true,
+            default: 18
         },
         gender:{
             type:String,
@@ -31,7 +35,7 @@ const userSchema = new mongoose.Schema(
             type:Boolean,
             default:false,
         },
-        isPaid: {
+        isPaid: { // kinda not needed in begining later redis store fall back 
             type: Boolean,
             default: false,
         },
@@ -45,11 +49,11 @@ const userSchema = new mongoose.Schema(
                 ref: "Memory",
             }
         ],
-        birthday: {
+        birthday: { // will be used to generate birthday wishes and to help the AI understand the user's age and life stage, which can influence the tone and content of its responses.
             type: Date,
             required: true,
         },
-        userPictures: {
+        userPictures: { // users can upload images of themselves to help the AI generate more accurate responses based on their appearance and expressions.
             type: [String],
             default: [""],
         },
