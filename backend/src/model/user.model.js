@@ -23,10 +23,6 @@ const userSchema = new mongoose.Schema(
             type:Number,
             default:0,
         },
-        age:{
-            type:Number,
-            default: 18
-        },
         gender:{
             type:String,
             required:true,
@@ -36,10 +32,6 @@ const userSchema = new mongoose.Schema(
             default:false,
         },
         isPaid: { // kinda not needed in begining later redis store fall back 
-            type: Boolean,
-            default: false,
-        },
-        isDeleted: {
             type: Boolean,
             default: false,
         },
@@ -54,7 +46,7 @@ const userSchema = new mongoose.Schema(
             required: true,
         },
         userPictures: { // users can upload images of themselves to help the AI generate more accurate responses based on their appearance and expressions.
-            type: [String],
+            type: [String],// for future only not now 
             default: [""],
         },
         conversations: [ //it will be a chat session each containing multiple messages so u can delete chunks
@@ -62,7 +54,22 @@ const userSchema = new mongoose.Schema(
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Conversation",
             }
-        ]
+        ],
+        AiModel:{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "AiModel",
+        },
+        AiModelCloseness: { //score set by ai at the end of each session
+            type: Number,
+            min: 0,
+            max: 10,
+            default: 0,
+        },
+
+        isOwner: {
+            type: Boolean,
+            default: false,
+        }
     }
 )
 

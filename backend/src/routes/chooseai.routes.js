@@ -1,0 +1,14 @@
+import { Router } from "express";
+import { firstAIModel, switchAIModel, getAIModel, setAIModel, getMyAIModel, rateAIModel } from "../controller/chooseai.controller.js";
+
+const router = Router();
+
+router.get("/get-ai-model", getAIModel);
+router.get("/get-my-ai-model", getMyAIModel);
+router.put("/first-ai-model", firstAIModel);
+router.put("/switch-ai-model", switchAIModel);
+router.put("/set-ai-model/:id", setAIModel);
+router.post("/rate-ai-model/:id", rateAIModel);
+
+export default router;
+

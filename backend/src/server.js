@@ -5,8 +5,13 @@ import http from "http"
 
 import { connectDB } from "./lib/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
+import { protectRoute } from "./middleware/auth.middleware.js";
 
 import authRoutes from "./routes/auth.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
+import chooseAiRoutes from "./routes/chooseai.routes.js";
+
+
 
 
 
@@ -27,6 +32,8 @@ app.use(cookieParser());
 
 
 app.use("/api/auth", authRoutes);
+app.use("/api/ai", protectRoute, aiRoutes);
+app.use("/api/chooseai", protectRoute, chooseAiRoutes);
 
 
 app.use(errorHandler)
