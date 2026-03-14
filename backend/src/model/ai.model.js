@@ -16,6 +16,11 @@ const aiModelSchema = new mongoose.Schema(
             default: 0,
             required: true,
         },
+        aiType:{ // the most important feature to actually sum up the type of ai 
+            type: String,
+            required: true,
+            maxLength: 20,
+        },
         personalityTraits: {
             humour:{
                 type: Number,

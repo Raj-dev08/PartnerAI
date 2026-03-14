@@ -10,6 +10,9 @@ import { protectRoute } from "./middleware/auth.middleware.js";
 import authRoutes from "./routes/auth.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 import chooseAiRoutes from "./routes/chooseai.routes.js";
+import experienceRoutes from "./routes/experience.routes.js";
+import interestRoutes from "./routes/interest.routes.js";
+
 
 
 
@@ -34,6 +37,8 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/ai", protectRoute, aiRoutes);
 app.use("/api/chooseai", protectRoute, chooseAiRoutes);
+app.use("/api/experience", protectRoute, experienceRoutes);
+app.use("/api/interest", protectRoute, interestRoutes);
 
 
 app.use(errorHandler)

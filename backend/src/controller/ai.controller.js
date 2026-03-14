@@ -12,6 +12,7 @@ export const generateAiModel = async (req, res, next) => {
             name,
             description,
             age,
+            aiType,
             personalityTraits,
             birthDate,
             birthMonth,
@@ -26,7 +27,7 @@ export const generateAiModel = async (req, res, next) => {
         } = req.body;
 
         if (
-            !name || !age || !personalityTraits ||
+            !name || !age || !aiType || !personalityTraits ||
             !birthDate || !birthMonth || !speechPatterns ||
             !expressiveness || !talkativeness || !trustBuildingRate
         ) {
@@ -39,6 +40,10 @@ export const generateAiModel = async (req, res, next) => {
 
         if (age > 50 || age < -50) {
             return res.status(400).json({ message: "Age Difference must be between -50 and 50 with user" });
+        }
+
+        if (aiType.length > 20){
+            return res.status(400).json({ message: "AI type must be less than 20 characters" });
         }
 
         if (
@@ -131,6 +136,7 @@ export const generateAiModel = async (req, res, next) => {
             name,
             description: description || "",
             age,
+            aiType,
             personalityTraits,
             birthDate,
             birthMonth,
