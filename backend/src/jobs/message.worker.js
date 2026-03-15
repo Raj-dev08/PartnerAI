@@ -251,9 +251,9 @@ const messageWorker = new Worker(
         const result = decision.choices[0].message.content.trim();
         const score = parseFloat(result) || 0
 
-        const randomNess = Math.random() - 0.5;
+        const randomNess = Math.random() ;
 
-        if ( score + randomNess > 1){
+        if ( score > randomNess ){
             return; //Ignore the message
         }
 
@@ -271,7 +271,7 @@ const messageWorker = new Worker(
         const aiAge = Math.floor(
             (Date.now() - new Date(user.birthday).getTime()) /
             (365.25 * 24 * 60 * 60 * 1000)
-        ) + Math.floor( user.age );
+        ) + Math.floor( aiModel.age );
         
         const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK, {
             text: message.message
@@ -463,9 +463,7 @@ const messageWorker = new Worker(
 
             const outputRaw = response.choices[0].message.content.trim();
 
-            if (output.length === 0){
-                return
-            }
+            
             let output
 
             try {
@@ -474,9 +472,13 @@ const messageWorker = new Worker(
                 return; //will have antother ai model for clearing it later
             }
 
+            if (output.length === 0){
+                return
+            }
 
-            for ( const message of output){
+            for ( const msg of output){
 
+                if (typeof msg !== "string") continue;
                 const newMessage = new Message({
                     userId,
                     aiId: message.aiId,
