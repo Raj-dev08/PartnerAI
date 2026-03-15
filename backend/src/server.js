@@ -6,12 +6,14 @@ import http from "http"
 import { connectDB } from "./lib/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { protectRoute } from "./middleware/auth.middleware.js";
+import { initSocket } from "./lib/socket.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 import chooseAiRoutes from "./routes/chooseai.routes.js";
 import experienceRoutes from "./routes/experience.routes.js";
 import interestRoutes from "./routes/interest.routes.js";
+import convoRoutes from "./routes/convo.routes.js";
 
 
 
@@ -39,12 +41,15 @@ app.use("/api/ai", protectRoute, aiRoutes);
 app.use("/api/chooseai", protectRoute, chooseAiRoutes);
 app.use("/api/experience", protectRoute, experienceRoutes);
 app.use("/api/interest", protectRoute, interestRoutes);
+app.use("/api/convo", protectRoute, convoRoutes);
+
 
 
 app.use(errorHandler)
 
 
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", async() => {
   console.log("server is running on PORT:" + PORT);
-  connectDB();
+  await initSocket(server);
+  await connectDB();
 });

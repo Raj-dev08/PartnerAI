@@ -69,6 +69,12 @@ const userSchema = new mongoose.Schema(
         isOwner: {
             type: Boolean,
             default: false,
+        },
+
+        userReference: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "UserReference",
+            required: true
         }
     }
 )

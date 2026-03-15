@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently \"nodemon src/server.js\" \"nodemon src/jobs/db.worker.js\"",
-    "start": "node src/server.js & node src/jobs/db.worker.js"
+    "dev": "concurrently \"nodemon src/server.js\" \"nodemon src/jobs/db.worker.js\" \"nodemon src/jobs/message.worker.js\"",
+    "start": "node src/server.js & node src/jobs/db.worker.js & node src/jobs/message.worker.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +13,7 @@
   "type": "module",
   "dependencies": {
     "@pinecone-database/pinecone": "^7.1.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.66.5",
@@ -23,6 +24,9 @@
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.2",
+    "openai": "^6.29.0",
+    "redis": "^5.11.0",
+    "socket.io": "^4.8.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

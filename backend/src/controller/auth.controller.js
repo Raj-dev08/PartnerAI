@@ -1,4 +1,5 @@
 import User from "../model/user.model.js";
+import UserReference from "../model/userReference.model.js";
 import bcrypt from 'bcryptjs'
 import { redis } from "../lib/redis.js";
 import axios from 'axios';
@@ -105,7 +106,13 @@ export const verifyOTP = async (req,res,next) => {
       return res.status(400).json({ message: "Invalid OTP "})
     }
 
+    const userReference = await UserReference.create({
+      userId: userData._id
+    })
+
     const newUser = new User(userData)
+
+    newUser.userReference = userReference._id
     
     if (newUser) {
       await newUser.save();
