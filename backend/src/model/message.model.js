@@ -22,6 +22,10 @@ const messageSchema = new mongoose.Schema(
             enum: ["user", "ai"],
             required: true,
         },
+        replyingTo: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Message",
+        },
         message: {
             type: String,
             required: true,

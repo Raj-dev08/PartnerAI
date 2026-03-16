@@ -10,6 +10,12 @@ import { messageQueue } from "../lib/message.queue.js";
 import { pineconeIndex } from "../lib/pinecone.js";
 import AiModel from "../model/ai.model.js";
 import axios from "axios";
+import { sendNotificationToExpo } from "../lib/expoPushNotification.js";
+import PastExperience from "../model/past.model.js";
+import Interest from "../model/interest.model.js";
+import { dbQueues } from "../lib/db.queue.js";
+
+
 
 await connectDB();
 
@@ -18,12 +24,14 @@ const openai = new OpenAI({
   baseURL: process.env.AI_URL
 });
 
+//TO-DO :CLEAN IT LATER WITH SEPERATE FUNCTIONS 
+
 const messageWorker = new Worker(
   "message-queue",
   async (job) => {
 
     if (job.name === "processMessage"){
-        const { userId, content, tempId } = job.data;
+        const { userId, content, replyingTo, tempId } = job.data;
 
         
         const user = await User.findById(userId);
@@ -46,8 +54,9 @@ const messageWorker = new Worker(
             const newMessage = new Message({
                 userId,
                 aiId: user.AiModel,
-                conversationId: newConvo._id,
+                conversationId: newConvo._id,               
                 sentBy: "user",
+                replyingTo,
                 message: content,
                 status: "completed"
             });
@@ -129,6 +138,7 @@ const messageWorker = new Worker(
                 aiId: lastConvo.aiId,
                 conversationId: lastConvo._id,
                 sentBy: "user",
+                replyingTo,
                 message: content,
                 status: "completed"
             });
@@ -156,6 +166,7 @@ const messageWorker = new Worker(
                 aiId: user.AiModel,
                 conversationId: newConvo._id,
                 sentBy: "user",
+                replyingTo,
                 message: content,
                 status: "completed"
             });
@@ -195,7 +206,7 @@ const messageWorker = new Worker(
     }
     else if (job.name === "processAiMessage"){
         const { messageId, userId } = job.data;
-        const message = await Message.findById(messageId);
+        const message = await Message.findById(messageId).populate("replyingTo");
 
         if(!message) {
             await emitSocketEvent(userId.toString(), "error", {
@@ -204,7 +215,7 @@ const messageWorker = new Worker(
             return;      
         }
 
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).populate("memories");
 
         if(!user || !user.AiModel || user.isDisabled){
             await emitSocketEvent(userId.toString(), "error", {
@@ -213,13 +224,50 @@ const messageWorker = new Worker(
             return;  
         }
 
-        let systemPrompt = `Decide if to ignore this message or not .
-         If the topic is out of context then increase the ignoring chances.
-         Send the output in float number from 0-1`
+        let systemPrompt = `You are a decision AI. For each incoming message, provide three outputs:
+                        1. "ignoreScore": float 0-1 indicating how much to ignore this message (higher means more likely to ignore).
+                        2. "searchPastExperience": "yes" or "no" depending on whether the message should trigger a search in past experiences.
+                        3. "interest": "yes" or "no" depending on whether the topic is potentially an interest or hobby .
+                        4. "tellAllPast": "yes" or "no" if the user is directly asking about your past and previous incidents or experiences.
+                        5. "tellAllInterest": "yes" or "no" if the user is directly asking about your interests or hobbies .
+                        6. "searchUserMemory": "yes" or "no" depending on whether it is related to user memory or not 
+                        7. "searchAllUserMemory":"yes" or "no" if the user directly commands to tell everything you know about user
 
+                        If the message is out of context, increase ignoreScore.
+                        Only reply with valid JSON. 
+                        Do NOT add any text, explanations, apologies, examples, or markdown.
+                        The JSON keys must exactly be: ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory.
+                        Send your output in strict JSON format only, like:
+                        {
+                        "ignoreScore": 0.45,
+                        "searchPastExperience": "yes",
+                        "interest": "no",
+                        "tellAllPast": "no",
+                        "tellAllInterest": "no",
+                        "searchUserMemory":"yes",
+                        "searchAllUserMemory":"no"
+                        }
+                        {
+                        "ignoreScore": 0.85,
+                        "searchPastExperience": "no",
+                        "interest": "yes",
+                        "tellAllPast": "no",
+                        "tellAllInterest": "yes",
+                        "searchUserMemory":"no",
+                        "searchAllUserMemory":"no"
+                        }
+                        {
+                        "ignoreScore": 0.1,
+                        "searchPastExperience": "yes",
+                        "interest": "yes",
+                        "tellAllPast": "yes",
+                        "tellAllInterest": "yes",
+                        "searchUserMemory":"yes",
+                        "searchAllUserMemory":"yes"
+                        }`;
         const previousMessages = await Message.find({
             conversationId: message.conversationId
-        }).sort({ createdAt: -1 }).limit(10);
+        }).populate("replyingTo").sort({ createdAt: -1 }).limit(10);
 
         
         const redisKey = `conversation:${message.conversationId}:${message.aiId}:${message.userId}`;
@@ -230,12 +278,12 @@ const messageWorker = new Worker(
             systemPrompt += `Short Term Memory of this convo :\n${JSON.parse(shortTermMemory)}\n\n`
         }
         
-        const history = previousMessages.reverse().map(m => m.sentBy + ": " + m.message).join("\n")
+        const history = previousMessages.reverse().map(m => ` ${m.replyingTo? `Replied to ${m.replyingTo.sentBy} : ${m.replyingTo.message}` : ``} ${m.sentBy} :  ${m.message}`).join("\n")
 
         systemPrompt += `Previous Conversation:\n${history}\n\n`
 
         const decision = await openai.chat.completions.create({
-            model: "microsoft/phi-3.5-mini-instruct",
+            model: "meta/llama3-70b-instruct",
             messages: [
                 {
                     role: "system",
@@ -243,19 +291,44 @@ const messageWorker = new Worker(
                 },
                 {
                     role: "user",
-                    content: `Message: ${message.message}\n\nReply with a float number from 0-1`
+                    content: `Message: ${message.message} 
+                    ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                    `
                 }
             ]
         });
 
-        const result = decision.choices[0].message.content.trim();
-        const score = parseFloat(result) || 0
+        let result
+        try {
+            result = decision.choices[0].message.content;
+            if (result.startsWith("```json")){
+                result = result.slice(7,-3)
+                result = JSON.parse(result)
+            }else{
+                result = JSON.parse(result)
+            }
+        } catch (err) {
+            throw new Error(err)
+        }
+
+        const { ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory} = result;
+
+        
 
         const randomNess = Math.random() ;
 
-        if ( score > randomNess ){
-            return; //Ignore the message
+        if ( ignoreScore > randomNess ){
+            const delayMs = (Math.random() * (5-2) ) * 60 * 60 * 1000 + Math.random() * 60 * 60 * 1000;
+            await messageQueue.add("startNewConvo", {
+                userId,
+                messageId // toDetermine if they talked after or not
+            },{
+                delay: delayMs
+            })//make a new message after random delay
+            return
         }
+
+        //IGNORE MECHANICS TILL NOW
 
         const aiModel = await AiModel.findById(user.AiModel);
 
@@ -267,37 +340,44 @@ const messageWorker = new Worker(
         }
 
         
+        let pastExperiences;
+        let interests;
+        let userMemories;
 
         const aiAge = Math.floor(
             (Date.now() - new Date(user.birthday).getTime()) /
             (365.25 * 24 * 60 * 60 * 1000)
         ) + Math.floor( aiModel.age );
-        
-        const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK, {
-            text: message.message
-        });
 
-        if (!data || !data.embedding) {
-            throw new Error("Embedding service failed");
-        }
-
-        const embedding = data.embedding;
-
-        const pastExperiences = await pineconeIndex
-            .namespace(message.aiId.toString())
-            .query({
-                vector: embedding,
-                topK: 5,
-                includeMetadata: true,
-                filter: {
-                    age: {
-                        $lte: aiAge
-                    },
-                    type:"experience"
-                }
+        if ( searchPastExperience === "yes" || interest === "yes" || searchUserMemory === "yes") {
+            const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK, {
+                text: message.message
             });
-        
-        const interests = await pineconeIndex
+
+            if (!data || !data.embedding) {
+                throw new Error("Embedding service failed");
+            }
+
+            const embedding = data.embedding;
+
+            if(searchPastExperience === "yes"){
+                pastExperiences = await pineconeIndex
+                .namespace(message.aiId.toString())
+                .query({
+                    vector: embedding,
+                    topK: 5,
+                    includeMetadata: true,
+                    filter: {
+                        age: {
+                            $lte: aiAge
+                        },
+                        type:"experience"
+                    }
+                });
+            }
+            
+            if (interest === "yes"){
+            interests = await pineconeIndex
             .namespace(message.aiId.toString())
             .query({
                 vector: embedding,
@@ -310,24 +390,143 @@ const messageWorker = new Worker(
                     type:"interest"
                 }
             });
-        
-        const pastExperienceMemories = (pastExperiences.matches || [])
+
+            }
+
+            if (searchUserMemory === "yes"){
+                userMemories = await pineconeIndex
+                .namespace(message.userId.toString())
+                .query({
+                    vector: embedding,
+                    topK: 5,
+                    includeMetadata: true,
+                    filter: {
+                        type:"memory"
+                    }
+                });
+
+            }
+        }
+
+        let allPastExp
+        let allInterest
+
+
+        if (tellAllPast === "yes"){
+            allPastExp = await PastExperience.find({
+                ageDuringEvent: {
+                    $lte: aiAge
+                },
+                aiId: message.aiId
+            })
+        }
+
+        if(tellAllInterest === "yes"){
+            allInterest = await Interest.find({
+                ageWhileInterest: {
+                    $lte: aiAge
+                },
+                aiId: message.aiId
+            })
+        }
+
+
+        const pastExperienceMemories = (pastExperiences?.matches || [])
             .filter(m => m.score >= 0.7)
             .slice(0, 3)
             .map(m => m.metadata);
 
-        const interestMemories = (interests.matches || [])
+        const interestMemories = (interests?.matches || [])
             .filter(m => m.score >= 0.7)
             .slice(0, 3)
             .map(m => m.metadata);
+
+        const ragMemoryUsers = (userMemories?.matches || [])
+            .filter(m => m.score >= 0.7)
+            .slice(0, 3)
+            .map(m => m.metadata);
+
+
+
+        const ragContext = `
+            RELEVANT MEMORIES
+
+            ${ pastExperienceMemories.length > 0
+                ? `Past Experiences: 
+                ${pastExperienceMemories
+                    .map(
+                    m => `Event: ${m.event}
+            Description: ${m.description} Age: ${m.age}`
+                    )
+                    .join("\n\n")}` : ``
+            }
+
+            ${ interestMemories.length > 0
+                 ? `Relevent Interests:
+                 ${interestMemories
+                    .map(
+                    m => `Interest: ${m.interest}
+                        Description: ${m.description} 
+                        ReasonForInterest: ${m.reasonForInterest}
+                        Acheivements: ${m.acheivements}
+                        Age: ${m.age}`
+                    )
+                    .join("\n\n")}`  : ``
+            }
+
+            ${ ragMemoryUsers.length > 0
+                 ? `Relevent User memory:
+                 ${ragMemoryUsers
+                    .map(
+                    m => `Title: ${m.title}
+                        Description: ${m.description} 
+                        MessageReference: ${m.messageReference}
+                        `
+                    )
+                    .join("\n\n")}`  : ``
+            }
+
+            ${allPastExp
+                ? `Past Experiences: 
+                    ${allPastExp.map( p => `Event: ${p.event}, Description: ${p.description}, Age: ${p.age}`).join("\n")}
+                `:``
+            }
+
+            ${allInterest
+                ? `Past Experiences: 
+                    ${allInterest.map( p => `
+                        Event: ${p.event}, 
+                        Description: ${p.description}, 
+                        ReasonForInterest: ${p.reasonForInterest}, 
+                        Achievements: ${p.acheivements}, 
+                        Age: ${p.age}`
+                    ).join("\n")}
+                `:``
+            }
+
+            ${searchAllUserMemory ==="yes"?
+                `
+                User memories:
+                ${user.memories.map(m => `
+                    Title: ${m.title}
+                    Description: ${m.description}
+                    MessageReference: ${m.messageReference}
+                `).join("\n")}
+                `:``
+                }
+            `;
+        
+        const aiGender  = `${user.gender == `other` ? `other` : user.gender == 'male' ? 'female' : 'male'}`
+
+        const aiName = `${aiGender == 'other' ? aiModel.otherName : aiGender == 'female' ? aiModel.femaleName : aiModel.maleName}`
 
         const personaContext = `
             AI PROFILE
-            Name: ${aiModel.name}
+            Name: ${aiName}
             Type: ${aiModel.aiType}
 
-            Ai age: ${aiModel.age}
-            Ai gender: opposite to ${aiModel.gender} so if male then u are female and vice versa
+            Ai age: ${aiAge}
+            Ai gender: ${aiGender}
 
             Personality Traits (0-10 scale):
             Humour: ${aiModel.personalityTraits.humour}
@@ -350,34 +549,14 @@ const messageWorker = new Worker(
             Talkativeness: ${aiModel.talkativeness}
             Trust Building Rate: ${aiModel.trustBuildingRate}
 
-            `;
+            Closeness with user: ${user.AiModelCloseness}
 
-        const ragContext = `
-            RELEVANT MEMORIES
+            Occupation: ${aiModel.occupation}
+            Occupation Weightage: ${aiModel.occupationWeightage}
+            Academic Background: ${aiModel.academicBackground}
+            Academic Background Weightage: ${aiModel.academicBackgroundWeightage}
 
-            Past Experiences:
-            ${
-            pastExperienceMemories.length
-                ? pastExperienceMemories
-                    .map(
-                    m => `Event: ${m.event}
-            Description: ${m.description}`
-                    )
-                    .join("\n\n")
-                : "None"
-            }
 
-            Interests:
-            ${
-            interestMemories.length
-                ? interestMemories
-                    .map(
-                    m => `Interest: ${m.interest}
-            Description: ${m.description}`
-                    )
-                    .join("\n\n")
-                : "None"
-            }
             `;
 
         const behaviourRules = `
@@ -387,9 +566,10 @@ const messageWorker = new Worker(
 
             Follow these rules:
 
-            1. Adapt personality and style based on traits above.
+            1. Adapt personality and style based on traits above and closeness with user and users message.
             2. Use catchphrases occasionally if it is appropriate not every message.
             3. You may ask questions, respond, tease, deny, or stay quiet.
+            4. You are allowed to swear and say cuss word according to communication style and persona
 
             Talkativeness controls message count:
             0-3 → short replies
@@ -419,10 +599,11 @@ const messageWorker = new Worker(
                 
             ]
 
-            Multiple messages:
+            Multiple messages with questions:
             [
                 "wait really?" ,
-            "how?" 
+                "how?" ,
+                "thats crazy"
             ]
 
             Rules:
@@ -433,73 +614,197 @@ const messageWorker = new Worker(
 
         const aiPrompt = `
             ${personaContext}
-
-            ${ragContext}
-
+           
             ${behaviourRules}
-
-            ${outputRules}
 
             Previous Conversation:
             ${history}
 
             Short Term Memomry:
             ${shortTermMemory ? `${JSON.parse(shortTermMemory)}\n\n`:``}
+
+            Sometimes even if user asks for past info that is in your short term memory say i forgot to mimic human behaviour.
+            
+            ${ragContext}
+
+            Use the rag like humans don't share everything just because you can
+            Share details based on persona and traits and closeness
+            Deny to share stuff if closeness is low and persona traits are cold and nonchalant
+
+            ${outputRules}
             `;
 
-            const response = await openai.chat.completions.create({
-                model: "microsoft/phi-3.5-mini-instruct",
+        const response = await openai.chat.completions.create({
+            model: "meta/llama-3.1-405b-instruct",
+            messages: [
+                {
+                    role: "system",
+                    content: aiPrompt
+                },
+                {
+                    role: "user",
+                    content: `Message: ${message.message}\n
+                    ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                    \n`
+                }
+            ]
+        })
+
+        const outputRaw = response.choices[0].message.content.trim();
+
+        
+        let output
+
+        try {
+            output = JSON.parse(outputRaw);
+        } catch {
+            const cleanUpDataPrompt = `
+                You are an AI whose task is to strictly format input according to the given output example.
+                - Only return an ARRAY of strings.
+                - Do NOT change the content of the messages.
+                - Ignore any explanations, extra text, markdown, or code blocks.
+                - Always follow this format exactly.
+                - Input may be messy or contain extra characters; just extract the messages into an array.
+                - Do NOT add, remove, or modify messages.
+
+                Output Example:
+                ["hey", "how u doing"]
+                `;
+            const cleanedOutput = await openai.chat.completions.create({
+                model: "meta/llama-3.1-405b-instruct",
                 messages: [
                     {
                         role: "system",
-                        content: aiPrompt
+                        content: cleanUpDataPrompt
                     },
                     {
                         role: "user",
-                        content: `Message: ${message.message}\n\n`
+                        content: `Message: ${outputRaw}`
                     }
                 ]
             })
 
-            const outputRaw = response.choices[0].message.content.trim();
-
-            
-            let output
+            const cleanedOutputRaw = cleanedOutput.choices[0].message.content.trim();
 
             try {
-                output = JSON.parse(outputRaw);
-            } catch {
-                return; //will have antother ai model for clearing it later
+                output = JSON.parse(cleanedOutputRaw);
+            } catch (err) {
+                throw new Error(err)
             }
+        }
 
-            if (output.length === 0){
-                return
+        if (output.length === 0){
+            return
+        }
+
+        for ( const msg of output){
+
+            if (typeof msg !== "string") continue;
+            const newMessage = new Message({
+                userId,
+                aiId: message.aiId,
+                conversationId: message.conversationId,
+                sentBy: "ai",
+                message: msg,
+                status: "completed"
+            });
+
+            await newMessage.save();
+
+            await Conversation.findByIdAndUpdate(message.conversationId, {
+                $push: { messages: newMessage._id }
+            });
+
+            await emitSocketEvent(userId.toString(), "aiMessage", {
+                message: newMessage
+            });
+
+            if (user.expoToken){
+                await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
             }
+            
+        }
 
-            for ( const msg of output){
+        const updateMemoryPrompt = ` You are a Short-Term Memory Update Engine.
 
-                if (typeof msg !== "string") continue;
-                const newMessage = new Message({
-                    userId,
-                    aiId: message.aiId,
-                    conversationId: message.conversationId,
-                    sentBy: "ai",
-                    message: msg,
-                    status: "completed"
-                });
+                                Your job is to update the AI's short term memory using the latest conversation.
 
-                await newMessage.save();
+                                INPUTS YOU RECEIVE
+                                1. Existing Short Term Memory
+                                2. New Message
+                                3. Recent Conversation
 
-                await Conversation.findByIdAndUpdate(message.conversationId, {
-                    $push: { messages: newMessage._id }
-                });
+                                NOTES:
+                                1. Short Term Memory can be empty
+                                2. Recent Conversations might be empty 
+                                3. Update memory based on new message if needed
+                                4. Send the same short term memory if there is no need to change anything
+                            
 
-                await emitSocketEvent(userId.toString(), "aiMessage", {
-                    message: newMessage
-                });
-                
-                //Add notification via expo later on
-            }
+                                TASK
+                                Update the memory by:
+                                • Keeping all important existing memory.
+                                • Adding new useful details from the recent conversation.
+                                • Updating facts if the new conversation contradicts old memory.
+                                • Removing trivial or irrelevant details.
+                                • Compressing redundant information.
+
+                                RULES
+                                • Maintain a concise but information-dense summary.
+                                • Focus on facts about the user, their preferences, opinions, mood, activities, and ongoing topics.
+                                • Preserve useful context that helps future conversation continuity.
+                                • Do NOT invent information.
+                                • Do NOT add explanations.
+                                • Do NOT repeat the instructions.
+                                • Do NOT output anything except the updated memory.
+                                • Maximum memory length: 120 words.
+                                • If memory grows too large, compress older details while preserving key facts.
+                                • If the message contains no new meaningful information about the user, return the existing memory unchanged.
+                                STYLE
+                                Write memory as clear bullet-like statements or short paragraphs.
+
+                                GOOD MEMORY EXAMPLES
+                                User likes late night conversations.
+                                User enjoys discussing programming and AI projects.
+                                User dislikes overly formal responses.
+                                User is currently building an AI companion app.
+
+                                IMPORTANT
+                                Return ONLY the updated short term memory text.
+                                No markdown.
+                                No explanations.
+                                No labels.
+                                No JSON.
+        `
+
+        const updatedMemoryResponse = await openai.chat.completions.create({
+            model: "meta/llama3-70b-instruct",
+            messages: [
+                {
+                    role: "system",
+                    content: updateMemoryPrompt
+                },
+                {
+                    role: "user",
+                    content: `
+                    Short Term Memory: ${shortTermMemory || "None"} 
+                    New Message: ${message.message} 
+                    ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                    Previous Messages: ${history || "None"} 
+                    `
+                }
+            ]
+        });
+
+        const updatedMemory = updatedMemoryResponse.choices[0].message.content
+
+        await redis.set(redisKey, updatedMemory, "EX", 30 * 60) //remember for 30 mins of inactivity
+
+        await dbQueues.add("createUserMemory", {
+            message,
+            userId,
+            recentMessages: history
+        })        
     }
   },
   {

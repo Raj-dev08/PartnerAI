@@ -9,7 +9,9 @@ export const generateAiModel = async (req, res, next) => {
         }
 
         const {
-            name,
+            maleName,
+            femaleName,
+            otherName,
             description,
             age,
             aiType,
@@ -27,7 +29,8 @@ export const generateAiModel = async (req, res, next) => {
         } = req.body;
 
         if (
-            !name || !age || !aiType || !personalityTraits ||
+            !maleName || !femaleName || !otherName ||
+            !age || !aiType || !personalityTraits ||
             !birthDate || !birthMonth || !speechPatterns ||
             !expressiveness || !talkativeness || !trustBuildingRate
         ) {
@@ -133,7 +136,9 @@ export const generateAiModel = async (req, res, next) => {
         }
 
         const newAiModel = await AiModel.create({
-            name,
+            maleName,
+            femaleName,
+            otherName,
             description: description || "",
             age,
             aiType,

@@ -5,17 +5,26 @@ import { connectDB } from "../lib/db.js";
 import Interest from "../model/interest.model.js";
 import PastExperience from "../model/past.model.js"
 import AiModel from "../model/ai.model.js";
+import User from "../model/user.model.js";
+import Memory from "../model/memory.model.js";
 import { pineconeIndex } from "../lib/pinecone.js";
 import axios from "axios";
+import OpenAI from "openai";
 
 
 await connectDB();
 
+const openai = new OpenAI({
+  apiKey: process.env.AI_API_KEY,
+  baseURL: process.env.AI_URL
+});
 
 const dbWorker = new Worker("db-queue", async (job) => {
 
     let interestDoc = null;
     let pastExperienceDoc = null;
+    let memoryDoc = null;
+
 
     try {
         if ( job.name === "createInterest" ) {
@@ -109,6 +118,159 @@ const dbWorker = new Worker("db-queue", async (job) => {
                 },
             ]);
         }
+        else if ( job.name === "createUserMemory" ){
+            const { message , userId , recentMessages } = job.data;
+
+            const user = await User.findById(userId);
+
+            if (!user || !user.AiModel || user.isDisabled){
+                return;
+            }
+
+            const systempPrompt = `You are a Long-Term Memory Extraction Engine.
+
+                                    Your job is to determine if the user's message contains meaningful information that should be stored as a long-term memory.
+
+                                    INPUTS YOU RECEIVE
+                                    1. Recent conversation
+                                    2. The latest user message
+
+                                    Your task:
+                                    • Decide if the message contains meaningful information worth remembering.
+                                    • If it does, extract a concise memory.
+                                    • Prioritize the user message more and only take the needed context from previous conversations
+                                    • Do not save the previous conversations that is out of context with the current message
+
+                                    Good memories include:
+                                    • User preferences (likes, dislikes)
+                                    • Personal facts about the user
+                                    • Important events or experiences
+                                    • Opinions that reveal personality
+                                    • Ongoing projects, goals, or activities
+                                    • Emotional or relationship moments
+
+                                    Do NOT store memories for trivial messages like:
+                                    • "ok"
+                                    • "lol"
+                                    • "nice"
+                                    • generic responses
+                                    • filler chat
+
+                                    MEMORY FORMAT RULES
+                                    • Title: short phrase summarizing the memory
+                                    • Description: 1–2 concise sentences explaining the memory
+                                    • Description should be clear and context independent
+                                    • Do not include unnecessary conversation details
+                                    • Do not invent information
+
+                                    OUTPUT RULES
+                                    Return ONLY valid JSON.
+                                    No explanations.
+                                    No markdown.
+                                    No extra text.
+
+                                    If the message is NOT worth remembering return:
+
+                                    {
+                                    "store": "no"
+                                    }
+
+                                    If the message IS worth remembering return:
+
+                                    {
+                                    "store": "yes",
+                                    "title": "short memory title",
+                                    "description": "clear description of the memory"
+                                    }`
+
+            const respones = await openai.chat.completions.create({
+                model: "meta/llama3-70b-instruct",
+                messages: [
+                    {
+                        role: "system",
+                        content: systempPrompt
+                    },
+                    {
+                        role: "user",
+                        content: `
+                        Current Message: ${message.message}
+                        ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                        Previous Messages: ${recentMessages}
+                        
+                        `
+                    }
+                ]
+            });
+
+            const output = respones.choices[0].message.content;
+            const msg = `${message.message}
+                        ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}`
+
+            try {
+                let res;
+
+                if(output.startsWith("```json")){
+                    res = JSON.parse(output.slice(7,-3))
+                } else{
+                    res = JSON.parse(output)
+                }
+
+
+                if (res.store === "yes"){
+                    memoryDoc = new Memory({
+                        userId,
+                        title: res.title,
+                        description: res.description,
+                        messageReference: msg
+                    })
+
+                    await memoryDoc.save();
+
+                    await User.findByIdAndUpdate(userId, {
+                        $push: {
+                            memories: memoryDoc._id
+                        }
+                    })
+
+                    
+                    
+                    const text = `
+                        Title: ${res.title}
+                        Description: ${res.description}
+                    `
+                    const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK,{
+                        text
+                    })
+
+                    if (!data || !data.embedding) {
+                        throw new Error("Embedding service returned invalid response");
+                    }
+
+                    const embedding = data.embedding;
+
+                    await pineconeIndex.namespace(userId.toString()).upsert([
+                        {
+                            id: `memory-${userId}-${memoryDoc._id}`,
+                            values: embedding,
+                            metadata: {
+                                type: "memory",       
+                                title: res.title,
+                                description: res.description,
+                                messageReference: msg
+                            },
+                        },
+                    ]);
+
+                    
+                } else {
+                    return;
+                }
+            } catch (error) {
+                return;
+            }
+
+        }
+            
     } catch (error) {
         console.error(error);
         
@@ -130,6 +292,14 @@ const dbWorker = new Worker("db-queue", async (job) => {
             })
         }
 
+        if(memoryDoc) {
+            await Memory.findByIdAndDelete(memoryDoc._id);
+            await User.findByIdAndUpdate(memoryDoc.userId, {
+                $pull: {
+                    memories: memoryDoc._id
+                }
+            })
+        }
         throw error;
     } 
 },{

@@ -15,7 +15,6 @@ export const sendOtp = async (req,res,next) => {
     try {
       const { email, name  , password, expoPushToken , birthday , gender} = req.body;
       
-      console.log("Received sendOtp request with data:", req.body);
       if ( !email || !name || !password || !birthday || !gender){
         return res.status(400).json({ message: "All fields are required "});
       }
@@ -27,6 +26,10 @@ export const sendOtp = async (req,res,next) => {
 
       if ( password.length < 4 ){
         return res.status(400).json({ message: "Password must be atleast 4 characters long"}) // add more robust checking later like checking for uniqueness
+      }
+
+      if (!["male","female","other"].includes(gender)){
+        return res.status(400).json({ message: "Invalid gender"})
       }
 
       const existingUser = await User.findOne({ email })

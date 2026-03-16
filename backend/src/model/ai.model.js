@@ -2,7 +2,15 @@ import mongoose from "mongoose";
 
 const aiModelSchema = new mongoose.Schema(
     {
-        name: {
+        maleName: {
+            type: String,
+            required: true,
+        },
+        femaleName:{
+            type: String,
+            required: true,
+        },
+        otherName: {
             type: String,
             required: true,
         },

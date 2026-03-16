@@ -1,16 +1,12 @@
-import Conversation from "../model/conversation.model.js";
 import Message from "../model/message.model.js";
 import { messageQueue } from "../lib/message.queue.js";
-import User from "../model/user.model.js";
 import crypto from "crypto";
-
-
 
 
 export const userSendsMessage = async (req, res, next) => {
     try {
         const { user } = req;
-        const { content } = req.body; 
+        const { content, replyngTo } = req.body; 
 
         if(user.isDisabled){
             return res.status(403).json({ message: "User is disabled" });
@@ -20,12 +16,21 @@ export const userSendsMessage = async (req, res, next) => {
             return res.status(400).json({ message: "Message content is required" });
         }
 
+        if(replyngTo) {
+            const reply = await Message.findById(replyngTo);
+
+            if(!reply){
+                return res.status(404).json({ message: "Reply not found" });
+            }
+        }
+
         const tempId = crypto.randomUUID();
         
       
         await messageQueue.add("processMessage", {
             userId: user._id,
             content,
+            replyngTo: replyngTo || null,
             tempId
         },{
             attempts: 3,
