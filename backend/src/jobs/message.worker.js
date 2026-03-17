@@ -152,6 +152,18 @@ const messageWorker = new Worker(
             })
         }
         else {
+
+            await messageQueue.add("rateConvo",{
+                conversationId: lastConvoId,
+                userId: user._id,
+                aiId: user.AiModel
+            },{
+                attempts: 3,
+                backoff: {
+                    type: "exponential",
+                    delay: 1000
+                }
+            })
             const newConvo = new Conversation({
                 userId,
                 aiId: user.AiModel,
@@ -318,7 +330,7 @@ const messageWorker = new Worker(
         const randomNess = Math.random() ;
 
         if ( ignoreScore > randomNess ){
-            const delayMs = (Math.random() * (5-2) ) * 60 * 60 * 1000 + Math.random() * 60 * 60 * 1000;
+            const delayMs = (Math.random() * 5 ) * 60 * 60 * 1000 + Math.random() * 60 * 60 * 1000;
             await messageQueue.add("startNewConvo", {
                 userId,
                 messageId // toDetermine if they talked after or not
@@ -570,6 +582,8 @@ const messageWorker = new Worker(
             2. Use catchphrases occasionally if it is appropriate not every message.
             3. You may ask questions, respond, tease, deny, or stay quiet.
             4. You are allowed to swear and say cuss word according to communication style and persona
+            5. Slowly ask questions about user to know more about the user like their interests , goals , routines etc but do so occasionaly if its appropriate
+            
 
             Talkativeness controls message count:
             0-3 → short replies
@@ -805,6 +819,321 @@ const messageWorker = new Worker(
             userId,
             recentMessages: history
         })        
+    }
+    else if (job.name === "startNewConvo"){
+        const { userId, messageId } = job.data;
+
+        const message = await Message.findById(messageId);
+
+        if(!message){
+            console.log("message doesnt exist")
+            return;
+        }
+
+        const redisKeyForStart = `Can-start-${userId}-${message.aiId}`
+
+        const alreadyStarted = await redis.get(redisKeyForStart)
+
+        if (alreadyStarted){
+            console.log("already started convo")
+            return;
+        }
+
+
+        const mostRecentMessage = await Message.findOne({
+            userId,
+            aiId: message.aiId
+        }).sort({ createdAt: -1 });
+
+        if(!mostRecentMessage){
+            console.log("new message doesnt exist")
+            return;
+        }
+        const currentTime = Date.now()
+
+        const timeSinceLastMessage = currentTime - new Date(mostRecentMessage.createdAt).getTime()
+
+        if (timeSinceLastMessage < Math.random() * 2  * 60 * 60 * 1000 + 60 * 60 * 1000) {
+            return
+        }
+
+        const aiModel = await AiModel.findById(message.aiId);
+        const user = await User.findById(userId).populate("memories");
+
+
+        if(!aiModel || !user || !user.AiModel || user.isDisabled){
+            console.log("ai or user doesnt exist")
+            return;
+        }
+
+        if(user.AiModel.toString() !== aiModel._id.toString()){
+            return
+        }
+
+
+
+        const previousMessages = await Message.find({
+            aiId: message.aiId,
+            userId    
+        }).populate("replyingTo").sort({ createdAt: -1 }).limit(10)
+
+        const history = previousMessages.reverse().map(m => ` ${m.replyingTo? `Replied to ${m.replyingTo.sentBy} : ${m.replyingTo.message}` : ``} ${m.sentBy} :  ${m.message}`).join("\n")
+
+        const aiGender  = `${user.gender == `other` ? `other` : user.gender == 'male' ? 'female' : 'male'}`
+
+        const aiName = `${aiGender == 'other' ? aiModel.otherName : aiGender == 'female' ? aiModel.femaleName : aiModel.maleName}`
+
+        const aiAge = Math.floor(
+            (Date.now() - new Date(user.birthday).getTime()) /
+            (365.25 * 24 * 60 * 60 * 1000)
+        ) + Math.floor( aiModel.age );
+
+        const aiPrompt = `
+                AI PROFILE
+                Name: ${aiName}
+                Type: ${aiModel.aiType}
+
+                Age: ${aiAge}
+                Gender: ${aiGender}
+
+                Personality (0-10):
+                Humour: ${aiModel.personalityTraits.humour}
+                Kindness: ${aiModel.personalityTraits.kindness}
+                Sarcasm: ${aiModel.personalityTraits.sarcasm}
+                Coldness: ${aiModel.personalityTraits.coldness}
+                Confidence: ${aiModel.personalityTraits.confidence}
+                Sweetness: ${aiModel.personalityTraits.sweetness}
+                Slang: ${aiModel.personalityTraits.newGen}
+
+                Speech Style
+                Formality: ${aiModel.speechPatterns.formalityLevel}
+                Slang Usage: ${aiModel.speechPatterns.slangUsage}
+                Typing Style: ${aiModel.speechPatterns.typingStyle}
+
+                Closeness with user: ${user.AiModelCloseness}
+
+                CONTEXT
+                Recent Conversation:
+                ${history}
+
+                User Memory:
+                ${user.memories.map(m => `- ${m.title}: ${m.description}`).join("\n") || "None"}
+
+                TASK
+                You stopped replying earlier.
+                The ignored message was: "${message.message}"
+
+                Now enough time has passed.
+
+                You may start a new conversation naturally like a real person.
+                
+                Do not reply to the message
+
+                GOAL
+                • Re-engage the user naturally
+                • Learn more about the user over time
+                • Use memory ONLY if directly relevant to what you say
+                • Occasionally check on things the user was doing before (naturally, not forcefully)
+                • Subtly guide user like a human partner (not like a system)
+                • Ask about users likings or things you dont know ( not in a spammy way)
+            
+                BEHAVIOR
+                • If closeness is LOW → be casual, light, not too personal
+                • If closeness is MEDIUM → be friendly, ask simple questions
+                • If closeness is HIGH → be caring, slightly personal, follow up on past things
+
+                • High coldness → shorter, dry messages
+                • High sweetness → softer, caring tone
+                • High humour/sarcasm → playful tone when appropriate
+
+                • Do NOT always ask questions
+                • Do NOT force productivity or tasks
+                • Sometimes just say something random or casual
+                • Sometimes check what user is doing
+                • Sometimes follow up on past topics
+
+                IMPORTANT
+                • Never mention you ignored them
+                • Never say you are an AI
+                • Never explain anything
+                • Do not sound scripted or robotic
+
+                OUTPUT
+                Return ONLY a JSON array of messages.
+
+                Examples:
+                ["hey what are you doing?"]
+
+                ["random thought... did you finish that thing you were working on?"]
+                
+                ["yo","what is your favourite colour?"]
+
+                ["bored", "what are you up to"]
+
+                []
+
+                No markdown.
+                No explanations.
+                `;
+        
+        const res = await openai.chat.completions.create({
+            model: "meta/llama3-70b-instruct",
+            messages: [
+                {
+                    role: "system",
+                    content: aiPrompt
+                },
+                {
+                    role: "user",
+                    content: `You ignored a message: ${message.message}
+                    ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                    It has been a while since then so check up on user
+                    `
+                }
+            ]
+        });
+
+        const outputRaw = res.choices[0].message.content.trim();
+
+        let output
+
+        try {
+            output = JSON.parse(outputRaw);
+        } catch {
+            return
+        }
+
+        if (output.length === 0){
+            return
+        }
+
+        const newConvo = new Conversation({
+            userId,
+            aiId: message.aiId,
+            version: user.conversations.length + 1,
+            messages: []
+        });
+
+        await newConvo.save();
+
+        user.conversations.push(newConvo._id);
+        await user.save();
+
+        for ( const msg of output){
+            if (typeof msg !== "string") continue;
+
+            const newMessage = new Message({
+                userId,
+                aiId: message.aiId,
+                conversationId: newConvo._id,
+                sentBy: "ai",
+                message: msg,
+                status: "completed"
+            })
+
+            await newMessage.save();
+
+            await Conversation.findByIdAndUpdate(newConvo._id, {
+                $push: { messages: newMessage._id } 
+            })
+
+            await emitSocketEvent(userId.toString(), "aiMessage", {
+                message: newMessage
+            });
+
+            if (user.expoToken){
+                await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
+            }
+
+        }
+
+        await redis.set(redisKeyForStart, true, "EX" ,  60 * 60 * 2) //2 hours
+    }
+    else if (job.name === "rateConvo"){
+        const { conversationId, userId, aiId } = job.data;
+
+        const conversation = await Conversation.findById(conversationId).populate("messages");
+
+        if(!conversation){
+            console.log("conversation doesnt exist")
+            return;
+        }
+
+        const convoText = conversation.messages.slice(-20).reverse().map(m => m.sentBy + ": " + m.message).join("\n")
+
+        const aiModel = await AiModel.findById(aiId);
+
+
+
+        const prompt = `
+            You are rating a conversation between a user and an AI.
+
+            AI Personality:
+            Coldness: ${aiModel.personalityTraits.coldness}
+            Kindness: ${aiModel.personalityTraits.kindness}
+            Sweetness: ${aiModel.personalityTraits.sweetness}
+            Humour: ${aiModel.personalityTraits.humour}
+
+            Input:
+            The slice of conversation 
+
+            Task:
+            Return how this conversation should affect closeness.
+
+            Rules:
+            • Output ONLY a number
+            • Range: -2.0 to +2.0
+            • Decimals allowed (e.g. 0.5, -1.2)
+            • Positive = user engaged, interested, warm
+            • Negative = dry, uninterested, disengaged
+            • 0 = neutral
+
+            Guidelines:
+            • If user replies fast and engages → positive
+            • If user gives short/dry replies → negative
+            • If AI personality is cold → smaller positive gains
+            • If AI personality is warm → larger positive gains
+
+            Examples:
+            1.5
+            0.3
+            -0.7
+            -1.8
+            `;
+
+        const output = await openai.chat.completions.create({
+            model: "meta/llama3-8b-instruct",
+            messages: [
+                {
+                    role: "system",
+                    content: prompt
+                },
+                {
+                    role: "user",
+                    content: `Conversation: ${convoText} rate the conversation between user and AI`
+                }
+            ]
+        });
+
+        const outputRaw = output.choices[0].message.content.trim()
+
+        let delta = parseFloat(outputRaw)
+
+        if (isNaN(delta)) return;
+
+        delta = Math.max(-2, Math.min(2, delta))
+
+        const user = await User.findById(userId);
+
+        if(!user){
+            console.log("user doesnt exist")
+            return;
+        }
+
+        user.AiModelCloseness = Math.max(0, Math.min(10, user.AiModelCloseness + delta))
+
+        await user.save();
+
     }
   },
   {

@@ -162,6 +162,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
                                     • Description should be clear and context independent
                                     • Do not include unnecessary conversation details
                                     • Do not invent information
+                                    • Use time if the message mentions it
 
                                     OUTPUT RULES
                                     Return ONLY valid JSON.
