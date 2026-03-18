@@ -271,6 +271,55 @@ const dbWorker = new Worker("db-queue", async (job) => {
             }
 
         }
+
+        else if ( job.name === "generateEmbeddingsForAiModel"){
+            const { aiId } = job.data;
+
+            const aiModel = await AiModel.findById(aiId);
+
+            if (!aiModel){
+                return;
+            }
+
+           const text = `
+                A ${aiModel.aiType} AI that is 
+                ${aiModel.personalityTraits.humour > 7 ? 'very humorous' : aiModel.personalityTraits.humour > 4 ? 'somewhat humorous' : 'serious'}, 
+                ${aiModel.personalityTraits.sarcasm > 6 ? 'sarcastic' : 'polite'}, 
+                and ${aiModel.personalityTraits.confidence > 6 ? 'confident' : 'a bit timid'}.
+
+                It is ${aiModel.personalityTraits.kindness > 6 ? 'kind' : 'neutral'} 
+                and ${aiModel.personalityTraits.coldness > 6 ? 'emotionally distant' : 'warm'}.
+
+                Communication is ${aiModel.speechPatterns.typingStyle}, 
+                ${aiModel.speechPatterns.formalityLevel > 5 ? "formal" : "casual"}, 
+                with ${aiModel.speechPatterns.slangUsage > 5 ? "modern slang" : "minimal slang"}.
+
+                The AI is ${aiModel.expressiveness > 6 ? "expressive" : "reserved"} 
+                and ${aiModel.talkativeness > 6 ? "talkative" : "concise"}.
+                `;
+
+            const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK,{
+                text
+            })
+
+            if (!data || !data.embedding) {
+                throw new Error("Embedding service returned invalid response");
+            }
+
+            const embedding = data.embedding;
+
+            await pineconeIndex.namespace('AiModelVectors').upsert([
+                {
+                    id: `${aiId}`,
+                    values: embedding,
+                    metadata: {
+                        verified: aiModel.isVerified
+                    }
+                },
+            ]);
+
+            
+        }
             
     } catch (error) {
         console.error(error);

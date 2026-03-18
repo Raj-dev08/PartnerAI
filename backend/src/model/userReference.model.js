@@ -19,9 +19,19 @@ const userReferenceSchema = new mongoose.Schema(
                     type: Number,
                     default: 0,
                 },
+                averageConvoLength:{
+                    type: Number,
+                    default: 0,
+                },
+                totalMessages:{
+                    type: Number,
+                    default: 0,
+                },
                 ratings:{
                     type: Number,
                     default: 0,
+                    min: 0,
+                    max: 5,
                 },
                 closeness:{
                     type: Number,

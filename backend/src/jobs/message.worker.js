@@ -14,6 +14,7 @@ import { sendNotificationToExpo } from "../lib/expoPushNotification.js";
 import PastExperience from "../model/past.model.js";
 import Interest from "../model/interest.model.js";
 import { dbQueues } from "../lib/db.queue.js";
+import UserReference from "../model/userReference.model.js";
 
 
 
@@ -108,7 +109,7 @@ const messageWorker = new Worker(
                 const history = lastMessages.reverse().map(m => m.sentBy + ": " + m.message).join("\n")
 
                 const decision = await openai.chat.completions.create({
-                    model: "microsoft/phi-3.5-mini-instruct",
+                    model: "meta/llama-3.1-8b-instruct",
                     messages: [
                         {
                             role: "system",
@@ -164,6 +165,19 @@ const messageWorker = new Worker(
                     delay: 1000
                 }
             })
+
+            await messageQueue.add("updateUserReference",{
+                conversationId: lastConvoId,
+                userId: user._id,
+                aiId: user.AiModel
+            }, {
+                attempts: 3,
+                backoff: {
+                    type: "exponential",
+                    delay: 1000
+                }
+            })
+
             const newConvo = new Conversation({
                 userId,
                 aiId: user.AiModel,
@@ -583,7 +597,6 @@ const messageWorker = new Worker(
             3. You may ask questions, respond, tease, deny, or stay quiet.
             4. You are allowed to swear and say cuss word according to communication style and persona
             5. Slowly ask questions about user to know more about the user like their interests , goals , routines etc but do so occasionaly if its appropriate
-            
 
             Talkativeness controls message count:
             0-3 → short replies
@@ -624,6 +637,8 @@ const messageWorker = new Worker(
             • Return only an ARRAY
             • No explanations
             • No markdown
+            • Dont send too many messages. Send messages based on persona
+            • If last messages are mostly sent by AI then stay dormant or send the bare minimum messages
             `;
 
         const aiPrompt = `
@@ -685,7 +700,7 @@ const messageWorker = new Worker(
                 ["hey", "how u doing"]
                 `;
             const cleanedOutput = await openai.chat.completions.create({
-                model: "meta/llama-3.1-405b-instruct",
+                model: "meta/llama-3.1-8b-instruct",
                 messages: [
                     {
                         role: "system",
@@ -1073,6 +1088,10 @@ const messageWorker = new Worker(
             Kindness: ${aiModel.personalityTraits.kindness}
             Sweetness: ${aiModel.personalityTraits.sweetness}
             Humour: ${aiModel.personalityTraits.humour}
+            Expressiveness: ${aiModel.expressiveness}
+            Talkativeness: ${aiModel.talkativeness}
+            Trust Building Rate: ${aiModel.trustBuildingRate}
+
 
             Input:
             The slice of conversation 
@@ -1133,6 +1152,47 @@ const messageWorker = new Worker(
         user.AiModelCloseness = Math.max(0, Math.min(10, user.AiModelCloseness + delta))
 
         await user.save();
+
+    }
+    else if (job.name === "updateUserReference"){
+        const { conversationId, userId, aiId } = job.data;
+
+        const user = await User.findById(userId)
+
+        if(!user){
+            console.log("user doesnt exist")
+            return;
+        }
+
+        const userReference = await UserReference.findOne({ userId });
+
+        if (!userReference) return;
+
+        const index = userReference.modelReference.findIndex(
+            m => m.modelId.toString() === aiId.toString()
+        );
+
+        if (index === -1) return;
+
+        const totalMessagesInConvo = await Message.countDocuments({
+            conversationId
+        });
+
+        const modelData = userReference.modelReference[index];
+
+        const newTotalConvos = modelData.totalConvos + 1;
+        const newTotalMessages = modelData.totalMessages + totalMessagesInConvo;
+
+        const newAvg =
+            newTotalMessages / newTotalConvos;
+
+        userReference.modelReference[index].totalConvos = newTotalConvos;
+        userReference.modelReference[index].totalMessages = newTotalMessages;
+        userReference.modelReference[index].averageConvoLength = newAvg;
+        userReference.modelReference[index].closeness = user.AiModelCloseness;
+
+
+        await userReference.save();
 
     }
   },

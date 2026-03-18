@@ -1,4 +1,5 @@
 import AiModel from "../model/ai.model.js";
+import { dbQueues } from "../lib/db.queue.js";
 
 export const generateAiModel = async (req, res, next) => {
     try {
@@ -155,6 +156,10 @@ export const generateAiModel = async (req, res, next) => {
             trustBuildingRate,
             madeBy: user._id
         });
+
+        await dbQueues.add("generateEmbeddingsForAiModel",{
+            aiId: newAiModel._id
+        })
 
         return res.status(201).json({
             message: "AI model created successfully",

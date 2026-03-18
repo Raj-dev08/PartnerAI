@@ -1,4 +1,8 @@
 import AiModel from "../model/ai.model.js";
+import UserReference from "../model/userReference.model.js";
+import { pineconeIndex } from "../lib/pinecone.js";
+import axios from "axios";
+import { redis } from "../lib/redis.js";
 
 export const firstAIModel = async(req,res,next) => {
     try {
@@ -32,6 +36,18 @@ export const firstAIModel = async(req,res,next) => {
 
         user.AiModel = aiModel._id;
         await user.save();
+
+        await UserReference.updateOne(
+            {
+                _id: user.userReference,
+                "modelReference.modelId": { $ne: aiModel._id }
+            },
+            {
+                $push: {
+                modelReference: { modelId: aiModel._id }
+                }
+            }
+        );
 
         return res.status(200).json({
             message: "AI model assigned successfully",
@@ -227,6 +243,18 @@ export const rateAIModel = async(req,res,next) => {
         aiModel.totalRaters.push(user._id);
         await aiModel.save();
 
+        await UserReference.updateOne(
+            {
+                _id: user.userReference,
+                "modelReference.modelId": aiModel._id
+            },
+            {
+                $set: {
+                    "modelReference.$.ratings": rating
+                }
+            }
+        )
+
         return res.status(200).json({
             message: "AI model rated successfully",
             aiModel
@@ -235,3 +263,161 @@ export const rateAIModel = async(req,res,next) => {
         next(error)
     }
 }
+
+export const reccomendedAIModel = async (req, res, next) => {
+    try {
+        const { user } = req;
+
+        if (user.isDisabled) {
+            return res.status(400).json({ message: "User is disabled" });
+        }
+
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = parseInt(req.query.skip) || 0;
+
+        const userRef = await UserReference.findOne({ userId: user._id });
+
+        let queryText = null;
+
+        if (userRef && userRef.modelReference.length > 0) {
+
+            const strongModels = userRef.modelReference.filter(m => (
+                m.ratings >= 3 &&
+                m.closeness >= 5 &&
+                m.totalMessages >= 100 &&
+                m.averageConvoLength >= 20
+            ));
+
+            if (strongModels.length > 0) {
+
+                const topModels = strongModels
+                    .sort((a, b) => (b.ratings + b.closeness) - (a.ratings + a.closeness))
+                    .slice(0, 3);
+
+                const aiModels = await AiModel.find({
+                    _id: { $in: topModels.map(m => m.modelId) }
+                });
+
+                const personalityTraits = {
+                    humour: 0,
+                    sarcasm: 0,
+                    confidence: 0,
+                    kindness: 0,
+                    coldness: 0,
+                    formalityLevel: 0,
+                    slangUsage: 0,
+                    expressiveness: 0,
+                    talkativeness: 0,
+                };
+
+                let totalWeight = 0;
+
+                topModels.forEach(ref => {
+                    const model = aiModels.find(
+                        m => m._id.toString() === ref.modelId.toString()
+                    );
+                    if (!model) return;
+
+                    const weight = ref.ratings * 2 + ref.closeness;
+
+                    personalityTraits.humour += model.personalityTraits.humour * weight;
+                    personalityTraits.sarcasm += model.personalityTraits.sarcasm * weight;
+                    personalityTraits.confidence += model.personalityTraits.confidence * weight;
+                    personalityTraits.kindness += model.personalityTraits.kindness * weight;
+                    personalityTraits.coldness += model.personalityTraits.coldness * weight;
+                    personalityTraits.formalityLevel += model.speechPatterns.formalityLevel * weight;
+                    personalityTraits.slangUsage += model.speechPatterns.slangUsage * weight;
+                    personalityTraits.expressiveness += model.expressiveness * weight;
+                    personalityTraits.talkativeness += model.talkativeness * weight;
+
+                    totalWeight += weight;
+                });
+
+                Object.keys(personalityTraits).forEach(k => {
+                    personalityTraits[k] /= totalWeight;
+                });
+
+
+                queryText = `
+                    A ${topModels[0].aiType || "conversational"} AI that is 
+                    ${personalityTraits.humour > 7 ? 'very humorous' : personalityTraits.humour > 4 ? 'somewhat humorous' : 'serious'}, 
+                    ${personalityTraits.sarcasm > 6 ? 'sarcastic' : 'polite'}, 
+                    and ${personalityTraits.confidence > 6 ? 'confident' : 'a bit timid'}.
+
+                    It is ${personalityTraits.kindness > 6 ? 'kind' : 'neutral'} 
+                    and ${personalityTraits.coldness > 6 ? 'emotionally distant' : 'warm'}.
+
+                    Communication is ${topModels[0].speechPatterns.typingStyle || "normal"}, 
+                    ${personalityTraits.formalityLevel > 5 ? "formal" : "casual"}, 
+                    with ${personalityTraits.slangUsage > 5 ? "modern slang" : "minimal slang"}.
+
+                    The AI is ${personalityTraits.expressiveness > 6 ? "expressive" : "reserved"} 
+                    and ${personalityTraits.talkativeness > 6 ? "talkative" : "concise"}.
+                    `;
+            }
+        }
+
+        if (!queryText) {
+            queryText = "A friendly, engaging, conversational AI with balanced personality.";
+        }
+
+
+        let pineconeResults;
+
+        const cached = await redis.get(queryText);
+
+        if (cached) {
+            pineconeResults = JSON.parse(cached);
+        } else {
+            
+            const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK, {
+                text: queryText
+            });
+
+            if (!data || !data.embedding) {
+                return res.status(500).json({ message: "Embedding service failed" });
+            }
+
+            const embedding = data.embedding;
+
+            pineconeResults = await pineconeIndex
+                .namespace("AiModelVectors")
+                .query({
+                    vector: embedding,
+                    topK: skip + limit + 20, 
+                });
+
+            await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 * 24);
+        }
+
+       
+        const ids = pineconeResults.matches.map(m => m.id);
+
+        const usedIds = new Set(
+            userRef?.modelReference.map(r => r.modelId.toString()) || []
+        );
+
+        const filteredIds = ids.filter(id => !usedIds.has(id));
+
+        const paginatedIds = filteredIds.slice(skip, skip + limit);
+
+      
+        let models = await AiModel.find({
+            _id: { $in: paginatedIds }
+        });
+
+        models.sort((a, b) => {
+            if (a.isVerified !== b.isVerified) {
+                return b.isVerified - a.isVerified;
+            }
+            if (a.ratings !== b.ratings) {
+                return b.ratings - a.ratings;
+            }
+            return b.totalRated - a.totalRated;
+        });
+
+        return res.status(200).json({ models });
+    } catch (error) {
+        next(error);
+    }
+};
