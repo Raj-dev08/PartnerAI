@@ -339,7 +339,7 @@ export const reccomendedAIModel = async (req, res, next) => {
 
 
                 queryText = `
-                    A ${topModels[0].aiType || "conversational"} AI that is 
+                    A ${aiModels[0].aiType || "conversational"} AI that is 
                     ${personalityTraits.humour > 7 ? 'very humorous' : personalityTraits.humour > 4 ? 'somewhat humorous' : 'serious'}, 
                     ${personalityTraits.sarcasm > 6 ? 'sarcastic' : 'polite'}, 
                     and ${personalityTraits.confidence > 6 ? 'confident' : 'a bit timid'}.
@@ -347,7 +347,7 @@ export const reccomendedAIModel = async (req, res, next) => {
                     It is ${personalityTraits.kindness > 6 ? 'kind' : 'neutral'} 
                     and ${personalityTraits.coldness > 6 ? 'emotionally distant' : 'warm'}.
 
-                    Communication is ${topModels[0].speechPatterns.typingStyle || "normal"}, 
+                    Communication is ${aiModels[0].speechPatterns.typingStyle || "normal"}, 
                     ${personalityTraits.formalityLevel > 5 ? "formal" : "casual"}, 
                     with ${personalityTraits.slangUsage > 5 ? "modern slang" : "minimal slang"}.
 
@@ -384,7 +384,7 @@ export const reccomendedAIModel = async (req, res, next) => {
                 .namespace("AiModelVectors")
                 .query({
                     vector: embedding,
-                    topK: skip + limit + 20, 
+                    topK: skip + limit + 50, 
                 });
 
             await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 * 24);
