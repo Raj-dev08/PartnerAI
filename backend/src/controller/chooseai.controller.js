@@ -3,6 +3,7 @@ import UserReference from "../model/userReference.model.js";
 import { pineconeIndex } from "../lib/pinecone.js";
 import axios from "axios";
 import { redis } from "../lib/redis.js";
+import { messageQueue } from "../lib/message.queue.js";
 
 export const firstAIModel = async(req,res,next) => {
     try {
@@ -48,6 +49,19 @@ export const firstAIModel = async(req,res,next) => {
                 }
             }
         );
+
+
+
+        await messageQueue.add("startBrandNewConvo", {
+            userId: user._id // will fetch ai details so it is for user not just for ai
+        },{
+            delay: 1000, // 1s delay for first message then it will be random and dynamic
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
 
         return res.status(200).json({
             message: "AI model assigned successfully",

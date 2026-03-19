@@ -25,11 +25,10 @@ const dbWorker = new Worker("db-queue", async (job) => {
     let pastExperienceDoc = null;
     let memoryDoc = null;
 
-
     try {
         if ( job.name === "createInterest" ) {
             const { aiId , interest , description , reasonForInterest , age , acheivements } = job.data;
-            
+
             interestDoc = await Interest.create({
                 aiId,
                 interest,
@@ -62,7 +61,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
 
             await pineconeIndex.namespace(aiId.toString()).upsert([
                 {
-                    id: `int-${interestDoc._id}`,
+                    id: `int-${aiId}-${interest}`,
                     values: embedding,
                     metadata: {
                         type: "interest",
@@ -78,6 +77,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
 
         else if ( job.name === "createPastExperience" ){
             const { aiId , event , description , age } = job.data;
+
             pastExperienceDoc = await PastExperience.create({
                 aiId,
                 event,
@@ -107,7 +107,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
 
             await pineconeIndex.namespace(aiId.toString()).upsert([
                 {
-                    id: `exp-${pastExperienceDoc._id}`,
+                    id: `exp-${aiId}-${event}`,
                     values: embedding,
                     metadata: {
                         type: "experience",       
@@ -141,28 +141,16 @@ const dbWorker = new Worker("db-queue", async (job) => {
                                     • Prioritize the user message more and only take the needed context from previous conversations
                                     • Do not save the previous conversations that is out of context with the current message
 
-                                    Good memories include:
-                                    • User preferences (likes, dislikes)
-                                    • Personal facts about the user
-                                    • Important events or experiences
-                                    • Opinions that reveal personality
-                                    • Ongoing projects, goals, or activities
-                                    • Emotional or relationship moments
-
-                                    Do NOT store memories for trivial messages like:
-                                    • "ok"
-                                    • "lol"
-                                    • "nice"
-                                    • generic responses
-                                    • filler chat
+                                    Do NOT store memories for trivial messages 
 
                                     MEMORY FORMAT RULES
                                     • Title: short phrase summarizing the memory
                                     • Description: 1–2 concise sentences explaining the memory
+                                    • Importance: number describing how important the memory is , the range is 0-10
                                     • Description should be clear and context independent
-                                    • Do not include unnecessary conversation details
                                     • Do not invent information
                                     • Use time if the message mentions it
+                                    • Make sure the title and description combined should be less than 60 words
 
                                     OUTPUT RULES
                                     Return ONLY valid JSON.
@@ -181,8 +169,10 @@ const dbWorker = new Worker("db-queue", async (job) => {
                                     {
                                     "store": "yes",
                                     "title": "short memory title",
-                                    "description": "clear description of the memory"
-                                    }`
+                                    "description": "clear description of the memory",
+                                    "importance": 5 
+                                    }
+                                    `
 
             const respones = await openai.chat.completions.create({
                 model: "meta/llama3-70b-instruct",
@@ -211,24 +201,47 @@ const dbWorker = new Worker("db-queue", async (job) => {
                 let res;
 
                 if(output.startsWith("```json")){
-                    res = JSON.parse(output.slice(7,-3))
+                    res = JSON.parse(output.replace(/```json|```/g, '').trim());
                 } else{
                     res = JSON.parse(output)
                 }
 
 
                 if (res.store === "yes"){
-                    memoryDoc = new Memory({
+                    memoryDoc = await Memory.create({
                         userId,
                         title: res.title,
                         description: res.description,
+                        importance: res.importance,
                         messageReference: msg
                     })
 
-                    await memoryDoc.save();
 
-                    await User.findByIdAndUpdate(userId, {
-                        $push: {
+
+                    const deleteMemomries = await Memory.find({
+                            userId
+                        }).sort({ importance: 1 , createdAt: 1})
+
+                    if(deleteMemomries.length  > 120){
+                        const toDelete = deleteMemomries.slice(0, deleteMemomries.length - 100);
+
+                        await Memory.deleteMany({ _id: { $in: toDelete.map(mem => mem._id) } });
+
+                        await User.updateOne(
+                            { _id : userId } , {
+                            $pull: { memories: { $in: toDelete.map(mem => mem._id) } }
+                        });
+
+                        await pineconeIndex.namespace(userId.toString()).deleteMany({
+                            ids: toDelete.map(mem => `memory-${userId}-${mem._id}`)
+                        });
+                    }
+                    
+
+                    await User.updateOne({
+                        _id: userId
+                    }, {
+                        $addToSet: {
                             memories: memoryDoc._id
                         }
                     })
@@ -251,12 +264,13 @@ const dbWorker = new Worker("db-queue", async (job) => {
 
                     await pineconeIndex.namespace(userId.toString()).upsert([
                         {
-                            id: `memory-${userId}-${memoryDoc._id}`,
+                            id: `memory-${userId}-${message._id}`,
                             values: embedding,
                             metadata: {
                                 type: "memory",       
                                 title: res.title,
                                 description: res.description,
+                                importance: res.importance,
                                 messageReference: msg
                             },
                         },
@@ -348,11 +362,12 @@ const dbWorker = new Worker("db-queue", async (job) => {
                 $pull: {
                     memories: memoryDoc._id
                 }
-            })
+            })          
         }
         throw error;
     } 
 },{
+    concurrency: 5,
     connection: redis
 })
 

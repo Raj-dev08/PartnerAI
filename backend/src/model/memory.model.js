@@ -15,6 +15,13 @@ const memorySchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        importance: {
+            type: Number,
+            required: true,
+            default:0,
+            max:10,
+            min:0
+        },
         messageReference: { // ai will store the one message or multiple messages reference here
             type: String,
             required: true,
@@ -23,6 +30,10 @@ const memorySchema = new mongoose.Schema(
         timestamps: true,
     }
 )
+
+memorySchema.index({ importance: 1 , createdAt: 1})
+memorySchema.index({ userId: 1, title: 1 }, { unique: true });
+
 
 const Memory = mongoose.model("Memory", memorySchema);
 

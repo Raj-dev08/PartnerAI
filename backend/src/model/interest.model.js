@@ -31,6 +31,7 @@ const interestSchema = new mongoose.Schema(
         },
     }
 )
+interestSchema.index({ aiId: 1, interest: 1 }, { unique: true });
 
 const Interest = mongoose.model("Interest",interestSchema)
 

@@ -23,6 +23,8 @@ const pastExperienceSchema = new mongoose.Schema(
         },
     }
 )
+pastExperienceSchema.index({ aiId: 1, event: 1 }, { unique: true });
+
 
 const PastExperience = mongoose.model("PastExperience",pastExperienceSchema)
 

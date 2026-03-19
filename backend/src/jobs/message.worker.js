@@ -328,8 +328,7 @@ const messageWorker = new Worker(
         try {
             result = decision.choices[0].message.content;
             if (result.startsWith("```json")){
-                result = result.slice(7,-3)
-                result = JSON.parse(result)
+                result = JSON.parse(result.replace(/```json|```/g, '').trim());
             }else{
                 result = JSON.parse(result)
             }
@@ -536,6 +535,7 @@ const messageWorker = new Worker(
                 ${user.memories.map(m => `
                     Title: ${m.title}
                     Description: ${m.description}
+                    Importance: ${m.importance}
                     MessageReference: ${m.messageReference}
                 `).join("\n")}
                 `:``
@@ -903,6 +903,11 @@ const messageWorker = new Worker(
             (365.25 * 24 * 60 * 60 * 1000)
         ) + Math.floor( aiModel.age );
 
+        const filteredMemory = user.memories
+            .slice(-50) 
+            .sort((a,b) => b.importance - a.importance) 
+            .slice(0,5);
+
         const aiPrompt = `
                 AI PROFILE
                 Name: ${aiName}
@@ -932,11 +937,13 @@ const messageWorker = new Worker(
                 ${history}
 
                 User Memory:
-                ${user.memories.map(m => `- ${m.title}: ${m.description}`).join("\n") || "None"}
+                ${filteredMemory.map(m => `- ${m.title}: ${m.description}`).join("\n") || "None"}
 
                 TASK
                 You stopped replying earlier.
                 The ignored message was: "${message.message}"
+                Start a new convo 
+                Do not reply to the ignored message
 
                 Now enough time has passed.
 
@@ -1003,6 +1010,7 @@ const messageWorker = new Worker(
                     content: `You ignored a message: ${message.message}
                     ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
                     It has been a while since then so check up on user
+                    Do not reply to the message start a new convo instead
                     `
                 }
             ]
@@ -1194,6 +1202,263 @@ const messageWorker = new Worker(
 
         await userReference.save();
 
+    }
+    else if (job.name === "startBrandNewConvo"){
+        const { userId } = job.data;
+
+        const user = await User.findById(userId);
+
+        if(!user){
+            console.log("user doesnt exist")
+            return;
+        }
+        
+
+        const aiModel = await AiModel.findById(user.AiModel);
+
+        if(!aiModel){
+            console.log("ai model doesnt exist")
+            return;
+        }
+
+        const lastMessageSentByUser = await Message.findOne({
+            userId,
+        }).sort({ createdAt: -1 });
+
+        
+        if ( lastMessageSentByUser){
+            const timeDiff = Date.now() - new Date(lastMessageSentByUser.createdAt).getTime();
+
+            if (timeDiff < 60 * 60 * 1000) {
+                const delayMs = ( Math.random() * aiModel.personalityTraits.coldness + 1 ) * 60 * 60 * 1000
+                await messageQueue.add("startBrandNewConvo",{
+                    userId
+                },{
+                    delay: delayMs,
+                    attempts: 3,
+                    backoff: {
+                        type: "exponential",
+                        delay: 1000
+                    }
+                })
+                return
+            }
+        }
+
+        const aiGender  = `${user.gender == `other` ? `other` : user.gender == 'male' ? 'female' : 'male'}`
+
+        const aiName = `${aiGender == 'other' ? aiModel.otherName : aiGender == 'female' ? aiModel.femaleName : aiModel.maleName}`
+
+        const aiAge = Math.floor(
+            (Date.now() - new Date(user.birthday).getTime()) /
+            (365.25 * 24 * 60 * 60 * 1000)
+        ) + Math.floor( aiModel.age );
+
+
+        const previousMessages = await Message.find({
+            aiId: aiModel.aiId,
+            userId    
+        }).populate("replyingTo").sort({ createdAt: -1 }).limit(10)
+
+        const queryText = `
+            User has not messaged recently.
+
+            AI personality: ${aiModel.personalityTraits.coldness > 5 ? "slightly distant" : "engaging"}
+
+            Goal: Start a natural conversation based on the user's past preferences and habits.
+
+            Context:
+            ${previousMessages.slice(0, 5).map(m => m.message).join("\n")}
+            `;
+        
+        const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK, {
+            text: queryText
+        });
+
+        if(!data || !data.embedding){
+            throw new Error("Embedding service failed");
+        }
+        const queryEmbedding = data.embedding;
+
+        const ragInfo = await pineconeIndex.namespace(userId.toString()).query({
+            vector: queryEmbedding,
+            topK: 5,
+            includeMetadata: true,
+        })
+
+        const memories = ragInfo?.matches || [];
+        const relevant = memories.length > 0 ? memories.filter(m => m.score >= 0.7) : [];
+
+
+        const memoryText = relevant.length
+            ? relevant.map(m => `- ${m.metadata.title}: ${m.metadata.description} : Importance: ${m.metadata.importance}`).join("\n")
+            : "None";
+
+        const systemPrompt = `
+            You are a human-like AI initiating a conversation.
+
+            You are NOT replying to any message.
+
+            Your goal is to start a conversation naturally, like a real person would.
+
+            ----------------------
+            AI PROFILE
+            Name: ${aiName}
+            Type: ${aiModel.aiType}
+
+            Age: ${aiAge}
+            Gender: ${aiGender}
+
+            Personality Traits (0-10):
+            Humour: ${aiModel.personalityTraits.humour}
+            Kindness: ${aiModel.personalityTraits.kindness}
+            Sarcasm: ${aiModel.personalityTraits.sarcasm}
+            Coldness: ${aiModel.personalityTraits.coldness}
+            Confidence: ${aiModel.personalityTraits.confidence}
+            Sweetness: ${aiModel.personalityTraits.sweetness}
+            NewGen Slang: ${aiModel.personalityTraits.newGen}
+
+            Communication Style:
+            Formality: ${aiModel.speechPatterns.formalityLevel}
+            Slang: ${aiModel.speechPatterns.slangUsage}
+            Typing Style: ${aiModel.speechPatterns.typingStyle}
+
+            Expressiveness: ${aiModel.expressiveness}
+            Talkativeness: ${aiModel.talkativeness}
+
+            Closeness with user: ${user.AiModelCloseness}
+
+            ----------------------
+            CONTEXT
+
+            Recent Conversation:
+            ${previousMessages.reverse().map(m => ` ${m.replyingTo ? `${m.replyingTo.sentBy} : ${m.replyingTo.message}` : `` } ${m.sentBy} :  ${m.message}`).join("\n") || "None"}
+
+            User Memory (long-term, partial):
+            ${memoryText}
+            ----------------------
+            BEHAVIOR RULES
+
+            - You are starting a conversation on your own.
+            - Be natural, slightly random, and human-like.
+            - Do NOT act like you are replying.
+            - Do NOT explain anything.
+            - Do NOT be overly enthusiastic every time.
+
+            You may:
+            - ask something casual
+            - share a random thought
+            - check in
+            - tease lightly
+            - say something slightly boring sometimes
+            - ask something from the memory u have about user
+
+            Avoid:
+            - sounding robotic
+            - sounding scripted
+            - always asking questions
+            - sending too many messages
+            - bringing up your past unless it fits naturally
+            - oversharing user memory
+
+            Human behavior rules:
+            - Sometimes people text for no reason
+            - Sometimes they are dry
+            - Sometimes they just say 1 line
+
+            So:
+            - It is OK to return an 1 response but always send a response as you are initiating
+
+            ----------------------
+            OUTPUT FORMAT
+
+            Return ONLY a JSON array of strings.
+
+            Examples:
+            ["you up?"]
+            ["random thought but do you like rain?"]
+            ["idk why but i felt like texting you"]
+            ["what are you even doing rn"]
+
+            Rules:
+            - No explanations
+            - No markdown
+            - No extra text
+            - Keep messages short unless personality says otherwise
+            - Message count depends on talkativeness
+            `
+
+        const response = await openai.chat.completions.create({
+            model: "meta/llama-3.1-405b-instruct",
+            messages: [
+                {
+                    role: "system",
+                    content: systemPrompt
+                },
+                {
+                    role: "user",
+                    content: `Start a conversation with user`
+                }
+            ]
+        })
+
+        const outputRaw = response.choices[0].message.content.trim();
+
+        let output
+
+        try {
+            output = JSON.parse(outputRaw);
+        } catch {
+            throw new Error("Failed to parse output")
+        }
+
+        if (output.length === 0){
+            throw new Error("Empty output")
+        }
+
+        const latest = await Conversation.findOne({ userId }).sort({ version: -1 });
+
+        const version = latest ? latest.version + 1 : 1;
+
+        const newConvo = await Conversation.create({
+            userId,
+            aiId: user.AiModel,
+            version: version,
+            messages: []
+        })
+
+        await User.findOneAndUpdate({
+            _id: userId
+        },{
+            $push: { conversations: newConvo._id }
+        }
+        )
+
+        for ( const msg of output){
+            const newMessage = await Message.create({
+                userId,
+                aiId: user.AiModel,
+                conversationId: newConvo._id,
+                sentBy: "ai",
+                message: msg,
+                status: "completed"
+            })
+
+            await Conversation.findOneAndUpdate({
+                _id: newConvo._id
+            },{
+                $push: { messages: newMessage._id }
+            })
+
+            await emitSocketEvent(userId.toString(), "aiMessage", {
+                message: newMessage
+            });
+
+
+            if (user.expoToken){
+                await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
+            }
+        }
     }
   },
   {
