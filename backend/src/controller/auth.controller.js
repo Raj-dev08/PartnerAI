@@ -109,16 +109,15 @@ export const verifyOTP = async (req,res,next) => {
       return res.status(400).json({ message: "Invalid OTP "})
     }
 
-    const userReference = await UserReference.create({
-      userId: userData._id
-    })
+    const newUser = await User.create(userData)
 
-    const newUser = new User(userData)
-
-    newUser.userReference = userReference._id
-    
     if (newUser) {
-      await newUser.save();
+      const userReference = await UserReference.create({
+        userId: newUser._id
+      })
+      await User.findByIdAndUpdate(newUser._id, { userReference: userReference._id })
+
+
 
       const sessionId = await generateSessionId(newUser._id, 0) // default refresh token version is 0 when user is created
     
@@ -131,7 +130,7 @@ export const verifyOTP = async (req,res,next) => {
         _id: newUser._id,
         name: newUser.name,
         email: newUser.email,
-        age: newUser.age,
+        birthday: newUser.birthday,
         gender: newUser.gender,
         token,
         sessionId
@@ -170,7 +169,7 @@ export const login = async (req, res) => {
             _id: user._id,
             name: user.name,
             email: user.email,
-            age: user.age,
+            birthday: user.birthday,
             gender: user.gender,
             token,
             sessionId

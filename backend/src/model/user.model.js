@@ -75,7 +75,6 @@ const userSchema = new mongoose.Schema(
         userReference: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "UserReference",
-            required: true
         }
     }
 )

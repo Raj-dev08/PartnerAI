@@ -51,7 +51,6 @@ export const protectRoute = async (req, res, next) => {
 
             return next();
         } catch (err) {
-            console.log(err.name)
             if (err.name !== "TokenExpiredError") {
                 return res.status(401).json({ message: "Unauthorized - invalid token" });
             }

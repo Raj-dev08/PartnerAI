@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import http from "http"
+import cors from "cors"
 
 import { connectDB } from "./lib/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -34,6 +35,14 @@ const PORT = process.env.PORT;
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+    exposedHeaders: ["Authorization"]
+  })
+);
+
 
 
 app.use("/api/auth", authRoutes);
@@ -48,7 +57,7 @@ app.use("/api/convo", protectRoute, convoRoutes);
 app.use(errorHandler)
 
 
-server.listen(PORT, "0.0.0.0", async() => {
+server.listen(PORT, "0.0.0.0", async () => {
   console.log("server is running on PORT:" + PORT);
   await initSocket(server);
   await connectDB();
