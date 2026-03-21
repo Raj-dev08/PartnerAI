@@ -158,13 +158,23 @@ export default function LandingPage() {
           It’s someone who stays.
         </motion.h2>
 
-        <motion.button
+        {/* Get Started Button */}
+        <motion.a
+          href="/"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="mt-8 px-8 py-3 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition"
+          className="inline-block mt-8 px-8 py-3 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition"
         >
-          Create Your Partner
-        </motion.button>
+          Get Started
+        </motion.a>
+
+        {/* Login / Signup */}
+        <p className="mt-4 text-sm text-neutral-400">
+          Don’t have an account?{" "}
+          <a href="/signup" className="text-white underline hover:text-neutral-300">
+            Sign up
+          </a>
+        </p>
       </section>
     </div>
   );

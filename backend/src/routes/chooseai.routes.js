@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { firstAIModel, switchAIModel, getAIModel, setAIModel, getMyAIModel, rateAIModel } from "../controller/chooseai.controller.js";
+import { firstAIModel, switchAIModel, getAIModel, setAIModel, getMyAIModel, rateAIModel, reccomendedAIModel } from "../controller/chooseai.controller.js";
 
 const router = Router();
 
@@ -9,6 +9,8 @@ router.put("/first-ai-model", firstAIModel);
 router.put("/switch-ai-model", switchAIModel);
 router.put("/set-ai-model/:id", setAIModel);
 router.post("/rate-ai-model/:id", rateAIModel);
+router.get("/reccomended-ai-model", reccomendedAIModel);
+
 
 export default router;
 

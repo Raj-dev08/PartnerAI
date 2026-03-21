@@ -46,8 +46,6 @@ type AuthState = {
 
   checkAuth: () => Promise<User | null>;
 
-  updateExpoPushToken: (expoPushToken: string) => Promise<boolean>;
-
   changePassword: (data: {
     currentPassword: string;
     newPassword: string;
@@ -167,18 +165,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  updateExpoPushToken: async (expoPushToken) => {
-    try {
-      await axiosInstance.post("/auth/update-expo-push-token", {
-        expoPushToken,
-      });
-      return true;
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Failed");
-      return false;
-    }
-  },
-
+  // updateExpoPushToken: async (expoPushToken) => {
+  //   try {
+  //     await axiosInstance.post("/auth/update-expo-push-token", {
+  //       expoPushToken,
+  //     });
+  //     return true;
+  //   } catch (error: any) {
+  //     toast.error(error?.response?.data?.message || "Failed");
+  //     return false;
+  //   }
+  // },
+ //Web doesnt have expo token so commented out
   changePassword: async (data) => {
     set({ loading: true });
     try {

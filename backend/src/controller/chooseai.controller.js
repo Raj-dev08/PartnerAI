@@ -79,19 +79,15 @@ export const switchAIModel = async(req,res,next) => {
         if ( user.isDisabled ){
             return res.status(400).json({ message: "User is disabled" });        
         }
-
-        if (!user.AiModel ){
-            return res.status(400).json({ message: "User does not have an AI model" });
-        }
         
-        const totalAICount = await AiModel.countDocuments({ _id: { $ne: user.AiModel }})
+        const totalAICount = await AiModel.countDocuments({ _id: { $ne: user.AiModel || null }})
 
         if( totalAICount === 0 ){
             return res.status(400).json({ message: "No new AI models found" });
         }
         const random = Math.floor(Math.random() * totalAICount)
 
-        const aiModel = await AiModel.findOne({ _id: { $ne: user.AiModel } }).skip(random)
+        const aiModel = await AiModel.findOne({ _id: { $ne: user.AiModel || null } }).skip(random)
 
         if (!aiModel){
             return res.status(404).json({ message: "No New AI models found" });
@@ -127,7 +123,6 @@ export const getAIModel = async(req,res,next) => {
         const search = req.query.search || "";
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-        
 
         const searchConditions = {
             $or: [
@@ -144,12 +139,22 @@ export const getAIModel = async(req,res,next) => {
             .limit(limit)
             .sort({ totalRated: -1, ratings: -1});
 
+        if ( aiModels.length === 0 ){
+            return res.status(200).json({ message: "No ai models available",aiModels:[],hasMore:false})
+        }
+
         const total = await AiModel.countDocuments(searchConditions);
+
+
+
+        const hasMore = total > page * limit;
+
+        
 
         return res.status(200).json({
             message: "AI models fetched successfully",
             aiModels,
-            total
+            hasMore
         });
     } catch (error) {
         next(error)
@@ -430,7 +435,7 @@ export const reccomendedAIModel = async (req, res, next) => {
             return b.totalRated - a.totalRated;
         });
 
-        return res.status(200).json({ models });
+        return res.status(200).json({ models , hasMore: paginatedIds.length > limit + skip});
     } catch (error) {
         next(error);
     }

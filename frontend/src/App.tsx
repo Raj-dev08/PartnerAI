@@ -6,6 +6,10 @@ import { useAuthStore } from "./store/useAuthStore"
 import SignupPage from "./pages/signup"
 import LoginPage from "./pages/login"
 import LandingPage from "./pages/landingPage"
+import HomePage from "./pages/homePage"
+import AccountPage from "./pages/userPage"
+
+import MainLayout from "./layout/Mainlayout"
 
 
 import { Toaster } from "react-hot-toast"
@@ -31,7 +35,12 @@ function App() {
     <div className="bg-linear-to-b from-base-300 to-primary/20 min-h-screen"> 
         <Toaster position="top-right" reverseOrder={false} />
           <Routes>
-              <Route path="/" element={user? <LandingPage/>: <Navigate to="/signup" />} />
+              <Route element={user ? <MainLayout /> : <Navigate to="/signup" />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/account" element={<AccountPage />} />
+              </Route>
+
+              <Route path="/landingpage" element={<LandingPage/>} />
               <Route path="/signup" element={user? <Navigate to="/"/>:<SignupPage />} />
               <Route path="/login" element={user? <Navigate to="/"/>: <LoginPage />} />
           </Routes>
