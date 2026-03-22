@@ -8,6 +8,8 @@ import LoginPage from "./pages/login"
 import LandingPage from "./pages/landingPage"
 import HomePage from "./pages/homePage"
 import AccountPage from "./pages/userPage"
+import CreateAiPage from "./pages/createAiPage"
+
 
 import MainLayout from "./layout/Mainlayout"
 
@@ -38,6 +40,7 @@ function App() {
               <Route element={user ? <MainLayout /> : <Navigate to="/signup" />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/account" element={<AccountPage />} />
+                <Route path="/create" element={<CreateAiPage />} />
               </Route>
 
               <Route path="/landingpage" element={<LandingPage/>} />

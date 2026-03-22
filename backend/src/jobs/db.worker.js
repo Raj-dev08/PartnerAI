@@ -316,11 +316,14 @@ const dbWorker = new Worker("db-queue", async (job) => {
                 text
             })
 
-            if (!data || !data.embedding) {
-                throw new Error("Embedding service returned invalid response");
-            }
+            console.log(data)
+            
 
             const embedding = data.embedding;
+
+            if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+                throw new Error("Invalid embedding: empty or missing");
+            }
 
             await pineconeIndex.namespace('AiModelVectors').upsert([
                 {

@@ -159,6 +159,12 @@ export const generateAiModel = async (req, res, next) => {
 
         await dbQueues.add("generateEmbeddingsForAiModel",{
             aiId: newAiModel._id
+        },{
+            attempts: 10,
+            backoff: {
+                type: "exponential",
+                delay: 10000
+            }
         })
 
         return res.status(201).json({

@@ -7,12 +7,12 @@ export default function MainLayout() {
     <div className="min-h-screen bg-neutral-950 text-white flex">
 
       {/* Sidebar (desktop) */}
-      <div className="hidden md:block">
+      <div className="hidden md:block md:w-64 md:fixed md:inset-y-0 md:left-0">
         <Sidebar />
       </div>
 
       {/* Main content */}
-      <div className="flex-1 pb-16 md:pb-0">
+      <div className="flex-1 md:ml-64 pb-16 md:pb-0">
         <Outlet />
       </div>
 
