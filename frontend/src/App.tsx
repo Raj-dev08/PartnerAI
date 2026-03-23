@@ -9,7 +9,8 @@ import LandingPage from "./pages/landingPage"
 import HomePage from "./pages/homePage"
 import AccountPage from "./pages/userPage"
 import CreateAiPage from "./pages/createAiPage"
-
+import MyAiPage from "./pages/myAiModels"
+import UpdateAiPage from "./pages/updateAiPage"
 
 import MainLayout from "./layout/Mainlayout"
 
@@ -41,6 +42,8 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/account" element={<AccountPage />} />
                 <Route path="/create" element={<CreateAiPage />} />
+                <Route path="/my-ai" element={<MyAiPage />} />
+                <Route path="/ai-model/update/:id" element={<UpdateAiPage />} />
               </Route>
 
               <Route path="/landingpage" element={<LandingPage/>} />

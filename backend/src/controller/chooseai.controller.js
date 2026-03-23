@@ -126,7 +126,9 @@ export const getAIModel = async(req,res,next) => {
 
         const searchConditions = {
             $or: [
-                { name: { $regex: search, $options: "i" } },
+                { maleName: { $regex: search, $options: "i" } },
+                { femaleName: { $regex: search, $options: "i" } },
+                { otherName: { $regex: search, $options: "i" } },
                 { description: { $regex: search, $options: "i" } },
             ]
         };
@@ -406,7 +408,7 @@ export const reccomendedAIModel = async (req, res, next) => {
                     topK: skip + limit + 50, 
                 });
 
-            await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 * 24);
+            await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 );
         }
 
        

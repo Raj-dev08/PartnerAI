@@ -1,7 +1,7 @@
 import { useAuthStore } from "../store/useAuthStore";
 import { useAiModelStore } from "../store/useChooseAi";
 import { Link, useLocation } from "react-router-dom";
-import { Home, User, PlusSquare, MessageCircle, Shuffle, HomeIcon } from "lucide-react";
+import { User, PlusSquare, MessageCircle, Shuffle, HomeIcon, Warehouse } from "lucide-react";
 
 export default function BottomNav() {
   const { user } = useAuthStore();
@@ -18,7 +18,7 @@ export default function BottomNav() {
         to="/"
         label="Home"
         icon={<HomeIcon size={18} />}
-        active={isActive("/create")}
+        active={isActive("/")}
       />
       {user?.AiModel ? (
         <NavItem
@@ -44,7 +44,12 @@ export default function BottomNav() {
         active={isActive("/create")}
       />
 
-      
+      <NavItem
+        to="/my-ai"
+        label="My-ai"
+        icon={<Warehouse size={18} />}
+        active={isActive("/my-ai")}
+      />
 
       <NavItem
         to="/account"

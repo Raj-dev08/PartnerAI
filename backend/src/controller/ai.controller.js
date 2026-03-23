@@ -1,5 +1,7 @@
 import AiModel from "../model/ai.model.js";
 import { dbQueues } from "../lib/db.queue.js";
+import { pineconeIndex } from "../lib/pinecone.js";
+
 
 export const generateAiModel = async (req, res, next) => {
     try {
@@ -31,7 +33,7 @@ export const generateAiModel = async (req, res, next) => {
 
         if (
             !maleName || !femaleName || !otherName ||
-            !age || !aiType || !personalityTraits ||
+            age == undefined || !aiType || !personalityTraits ||
             !birthDate || !birthMonth || !speechPatterns ||
             !expressiveness || !talkativeness || !trustBuildingRate
         ) {
@@ -154,13 +156,14 @@ export const generateAiModel = async (req, res, next) => {
             expressiveness,
             talkativeness,
             trustBuildingRate,
+            isVerified: user.isOwner,
             madeBy: user._id
         });
 
         await dbQueues.add("generateEmbeddingsForAiModel",{
             aiId: newAiModel._id
         },{
-            attempts: 10,
+            attempts: 1,
             backoff: {
                 type: "exponential",
                 delay: 10000
@@ -256,13 +259,66 @@ export const deleteAiModel = async (req, res, next) => {
             return res.status(403).json({ message: "Unauthorized" });
         }
 
+        await pineconeIndex.namespace("AiModelVectors").deleteOne(id);
         await AiModel.findByIdAndDelete(id);
 
         return res.status(200).json({
             message: "AI model deleted successfully"
         });
+ 
 
     } catch (error) {
         next(error);
     }
 };
+
+export const getAiModelsCreatedByMe = async (req, res, next) => {
+    try {
+        const { user } = req;
+
+        if ( user.isDisabled){
+            return res.status(400).json({ message: "User is disabled" });
+        }
+
+        const aiModels = await AiModel.find({ madeBy: user._id });
+
+        if (!aiModels || aiModels.length === 0) {
+            return res.status(200).json({ message: "No AI models made by you" });
+        }
+
+        return res.status(200).json({
+            message: "AI models fetched successfully",
+            aiModels
+        }); 
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getAiModelById = async (req, res, next) => {
+    try {
+        const { user } = req
+        const { id } = req.params
+
+        if (user.isDisabled){
+            return res.status(400).json({ message: "User is disabled" });
+        }
+
+        if (!id){
+            return res.status(400).json({ message: "AI model id is required" });
+        }
+
+        const aiModel = await AiModel.findById(id)
+
+        if (!aiModel){
+            return res.status(404).json({ message: "AI model not found" });
+        }
+
+        return res.status(200).json({
+            message: "AI model fetched successfully",
+            aiModel
+        });
+    } catch (error) {
+        next(error);
+    }
+}

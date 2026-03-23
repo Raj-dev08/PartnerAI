@@ -315,8 +315,6 @@ const dbWorker = new Worker("db-queue", async (job) => {
             const { data } = await axios.post(process.env.EMBEDDINGS_WORKER_LINK,{
                 text
             })
-
-            console.log(data)
             
 
             const embedding = data.embedding;

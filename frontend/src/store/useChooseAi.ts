@@ -10,7 +10,7 @@ type AiModel = {
   description?: string;
   aiType: string;
   ratings: number;
-  hasMoreRated: number;
+  totalRated: number;
   isVerified: boolean;
   expressiveness: number;
   talkativeness: number;
@@ -34,6 +34,8 @@ type AiState = {
 
   loading: boolean;
   searchLoading: boolean;
+  loadingForSettingAi: boolean;
+
 
   // actions
   getAIModels: (params?: {
@@ -69,6 +71,7 @@ export const useAiModelStore = create<AiState>((set) => ({
   loading: false,
   searchResults: [],
   searchLoading: false,
+  loadingForSettingAi: false,
 
   getAIModels: async (params) => {
     set({ loading: true });
@@ -77,16 +80,18 @@ export const useAiModelStore = create<AiState>((set) => ({
         params,
       });
 
-      set({
-        aiModels: res.data.aiModels,
-        hasMore: res.data.hasMore,
-      });
+      set((state)=>({
+        aiModels: [...state.aiModels, ...res.data.aiModels],
+        hasMore: res.data.hasMore
+      }))
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Failed to fetch AI models");
     } finally {
       set({ loading: false });
     }
   },
+
+  
   searchAIModels: async (query) => {
     if (!query.trim()) {
         set({ searchResults: [] });
@@ -116,6 +121,8 @@ export const useAiModelStore = create<AiState>((set) => ({
         params,
       });
 
+      console.log(res.data);
+
       set({
         forYouModels: res.data.models,
         hasMore: res.data.hasMore,
@@ -140,8 +147,8 @@ export const useAiModelStore = create<AiState>((set) => ({
     }
   },
 
-  firstAIModel: async () => {
-    set({ loading: true });
+  firstAIModel: async () => { //only sets verified models
+    set({ loadingForSettingAi: true });
     try {
       const res = await axiosInstance.put("/chooseai/first-ai-model");
       set({ myAiModel: res.data.aiModel });
@@ -151,12 +158,12 @@ export const useAiModelStore = create<AiState>((set) => ({
       toast.error(error?.response?.data?.message || "Failed");
       return false;
     } finally {
-      set({ loading: false });
+      set({ loadingForSettingAi: false });
     }
   },
 
-  switchAIModel: async () => {
-    set({ loading: true });
+  switchAIModel: async () => {//all models randomly
+    set({ loadingForSettingAi: true });
     try {
       const res = await axiosInstance.put("/chooseai/switch-ai-model");
       set({ myAiModel: res.data.aiModel });
@@ -166,12 +173,12 @@ export const useAiModelStore = create<AiState>((set) => ({
       toast.error(error?.response?.data?.message || "Failed");
       return false;
     } finally {
-      set({ loading: false });
+      set({ loadingForSettingAi: false });
     }
   },
 
-  setAIModel: async (id) => {
-    set({ loading: true });
+  setAIModel: async (id) => {//chosen model
+    set({ loadingForSettingAi: true });
     try {
       const res = await axiosInstance.put(`/chooseai/set-ai-model/${id}`);
       set({ myAiModel: res.data.aiModel });
@@ -181,7 +188,7 @@ export const useAiModelStore = create<AiState>((set) => ({
       toast.error(error?.response?.data?.message || "Failed");
       return false;
     } finally {
-      set({ loading: false });
+      set({ loadingForSettingAi: false });
     }
   },
 

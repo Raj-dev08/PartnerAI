@@ -8,3 +8,12 @@
   --font-heading: "Inter", sans-serif;
   --font-body: "Delius", cursive;
 }
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
