@@ -25,8 +25,7 @@ export default function BottomNav() {
           to="/chat"
           label="Chat"
           icon={<MessageCircle size={20} />}
-          active={isActive("/chat")}
-          highlight
+          active={isActive("/chat")}        
         />
       ) : (
         <ActionItem

@@ -294,7 +294,7 @@ export const reccomendedAIModel = async (req, res, next) => {
         }
 
         const limit = parseInt(req.query.limit) || 10;
-        const skip = parseInt(req.query.skip) || 0;
+        const page = parseInt(req.query.page) || 0;
 
         const userRef = await UserReference.findOne({ userId: user._id });
 
@@ -405,7 +405,7 @@ export const reccomendedAIModel = async (req, res, next) => {
                 .namespace("AiModelVectors")
                 .query({
                     vector: embedding,
-                    topK: skip + limit + 50, 
+                    topK: (page - 1) * limit + limit + 50, 
                 });
 
             await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 );
@@ -420,7 +420,7 @@ export const reccomendedAIModel = async (req, res, next) => {
 
         const filteredIds = ids.filter(id => !usedIds.has(id));
 
-        const paginatedIds = filteredIds.slice(skip, skip + limit);
+        const paginatedIds = filteredIds.slice((page - 1 ), (page -1 )*limit + limit);
 
       
         let models = await AiModel.find({
@@ -437,7 +437,7 @@ export const reccomendedAIModel = async (req, res, next) => {
             return b.totalRated - a.totalRated;
         });
 
-        return res.status(200).json({ models , hasMore: paginatedIds.length > limit + skip});
+        return res.status(200).json({ models , hasMore: paginatedIds.length == limit * ( page - 1 ) + limit});
     } catch (error) {
         next(error);
     }

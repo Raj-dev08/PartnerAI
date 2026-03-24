@@ -9,86 +9,118 @@ export default function HomePage() {
     forYouModels,
     searchResults,
     hasMore,
-    searchAIModels,
+    searchHasMore,
+    forYouHasMore,
     getAIModels,
     getAIModelsForMe,
+    searchAIModels,
   } = useAiModelStore();
 
   const { user } = useAuthStore();
 
   const [search, setSearch] = useState("");
+
   const [page, setPage] = useState(1);
+  const [searchPage, setSearchPage] = useState(1);
+  const [forYouPage, setForYouPage] = useState(1);
+
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const forYouRef = useRef<HTMLDivElement>(null);
   const exploreRef = useRef<HTMLDivElement>(null);
+  const forYouRef = useRef<HTMLDivElement>(null);
 
-  // Initial load
+  const isSearching = search.trim().length > 0;
+
+  /* ================= INITIAL LOAD ================= */
   useEffect(() => {
-    getAIModels({ page: 0, limit: 3 });
-    getAIModelsForMe({ limit: 10 });
+    getAIModels({ page: 1, limit: 10 });
+    getAIModelsForMe({ page: 1, limit: 10 });
   }, []);
 
-  // Search debounce
+  /* ================= SEARCH ================= */
   useEffect(() => {
     const delay = setTimeout(() => {
-      searchAIModels(search);
+      setSearchPage(1);
+      searchAIModels({ query: search, page: 1, limit: 10 });
     }, 300);
 
     return () => clearTimeout(delay);
   }, [search]);
 
-  // 🔥 Button scroll (desktop only)
-  const scroll = (ref: any, dir: "left" | "right") => {
+  /* ================= SCROLL HANDLER ================= */
+  const handleLoadMore = async (type: "explore" | "search" | "forYou") => {
+    if (loadingMore) return;
+
+    setLoadingMore(true);
+
+    try {
+      if (type === "search") {
+        if (!searchHasMore) return;
+
+        const next = searchPage + 1;
+        setSearchPage(next);
+        await searchAIModels({ query: search, page: next, limit: 10 });
+      }
+
+      if (type === "explore") {
+        if (!hasMore) return;
+
+        const next = page + 1;
+        setPage(next);
+        await getAIModels({ page: next, limit: 10 });
+      }
+
+      if (type === "forYou") {
+        if (!forYouHasMore) return;
+
+        const next = forYouPage + 1;
+        setForYouPage(next);
+        await getAIModelsForMe({ page: next, limit: 10 });
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  /* ================= SCROLL BUTTON ================= */
+  const scroll = (ref: any, dir: "left" | "right", title: string) => {
     if (!ref.current) return;
 
-    if (dir === "right") {
-      if ( !loadingMore && hasMore) {
-        setLoadingMore(true);
+    if(dir === 'right'){
+      if(title === 'For You'){
+        console.log("hit",forYouHasMore,forYouPage)
+        if(!loadingMore && forYouHasMore){
+          const next = forYouPage + 1;
+          setForYouPage(next);
+          console.log(forYouPage)
+          getAIModelsForMe({ page: next, limit: 10 });
+          console.log(forYouModels)
+        }
+      }
+      if(title ==='Explore'){
+        if(!loadingMore && hasMore){
+          const next = page + 1;
+          setPage(next);
+          getAIModels({ page: next, limit: 10 });
+        }
+      }
 
-        setPage((prev) => {
-          const next = prev + 1;
-          getAIModels({ page: next, limit: 3 });
-          return next;
-        });
-
-        setLoadingMore(false);
+      if(title ==='Search'){
+        if(!loadingMore && searchHasMore){
+          const next = searchPage + 1;
+          setSearchPage(next);
+          searchAIModels({ query: search,page: next, limit: 10 });
+        }
       }
     }
-
     ref.current.scrollBy({
       left: dir === "left" ? -320 : 320,
       behavior: "smooth",
     });
   };
 
-  // 🔥 Mobile + trackpad scroll detection
-  const handleScroll = (ref: React.RefObject<HTMLDivElement | null>) => {
-    if (!ref.current || loadingMore  || !hasMore) return;
-
-    const el = ref.current;
-
-    const isNearEnd =
-      el.scrollLeft + el.clientWidth >= el.scrollWidth - 100;
-
-    if (isNearEnd) {
-      setLoadingMore(true);
-
-      setPage((prev) => {
-        const next = prev + 1;
-        getAIModels({ page: next, limit: 3 });
-        return next;
-      });
-
-      setLoadingMore(false);
-    }
-  };
-
-  const isSearching = search.trim().length > 0;
-
   return (
     <div className="min-h-screen bg-neutral-950 text-white px-4 sm:px-6 py-10 max-w-screen mx-auto">
-
       <div className="max-w-6xl mx-auto space-y-12">
 
         {/* HEADER */}
@@ -112,35 +144,32 @@ export default function HomePage() {
 
         {/* SEARCH MODE */}
         {isSearching ? (
-          <>
-            {searchResults.length > 0 ? (
-              <Section
-                title="Search"
-                refEl={exploreRef}
-                scroll={scroll}
-                items={searchResults}
-                onLoadMore={() => handleScroll(exploreRef)}
-              />
-            ) : (
-              <p className="text-neutral-500 text-sm text-center py-10">
-                No models found
-              </p>
-            )}
-          </>
+          searchResults.length > 0 ? (
+            <Section
+              title="Search"
+              refEl={exploreRef}
+              scroll={scroll}
+              items={searchResults}
+              onLoadMore={() => handleLoadMore("search")}
+            />
+          ) : (
+            <p className="text-neutral-500 text-sm text-center py-10">
+              No models found
+            </p>
+          )
         ) : (
           <>
+            {!user?.AiModel && <EmptyState />}
             {/* FOR YOU */}
-            {forYouModels.length > 0 ? (
+            {forYouModels.length > 0 && (
               <Section
                 title="For You"
                 refEl={forYouRef}
                 scroll={scroll}
                 items={forYouModels}
-                onLoadMore={() => handleScroll(forYouRef)}
+                onLoadMore={() => handleLoadMore("forYou")}
               />
-            ) : (
-              <EmptyState />
-            )}
+            )} 
 
             {/* EXPLORE */}
             {aiModels.length > 0 ? (
@@ -149,7 +178,7 @@ export default function HomePage() {
                 refEl={exploreRef}
                 scroll={scroll}
                 items={aiModels}
-                onLoadMore={() => handleScroll(exploreRef)}
+                onLoadMore={() => handleLoadMore("explore")}
               />
             ) : (
               <p className="text-neutral-500 text-sm text-center py-10">

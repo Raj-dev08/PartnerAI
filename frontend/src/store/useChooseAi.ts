@@ -31,6 +31,8 @@ type AiState = {
   searchResults: AiModel[];
   myAiModel: AiModel | null;
   hasMore: boolean;
+  searchHasMore: boolean;
+  forYouHasMore: boolean;
 
   loading: boolean;
   searchLoading: boolean;
@@ -49,7 +51,11 @@ type AiState = {
     page?: number;
     limit?: number;
   }) => Promise<void>;
-  searchAIModels: (query: string) => Promise<void>; 
+  searchAIModels: (params?: {
+    query?: string;
+    page?: number;
+    limit?: number;
+  }) => Promise<void>; 
 
   
   getMyAIModel: () => Promise<void>;
@@ -63,7 +69,7 @@ type AiState = {
   rateAIModel: (id: string, rating: number) => Promise<boolean>;
 };
 
-export const useAiModelStore = create<AiState>((set) => ({
+export const useAiModelStore = create<AiState>((set,get) => ({
   aiModels: [],
   forYouModels: [],
   myAiModel: null,
@@ -72,6 +78,9 @@ export const useAiModelStore = create<AiState>((set) => ({
   searchResults: [],
   searchLoading: false,
   loadingForSettingAi: false,
+  searchHasMore: true,
+  forYouHasMore: true,
+
 
   getAIModels: async (params) => {
     set({ loading: true });
@@ -80,10 +89,16 @@ export const useAiModelStore = create<AiState>((set) => ({
         params,
       });
 
-      set((state)=>({
-        aiModels: [...state.aiModels, ...res.data.aiModels],
-        hasMore: res.data.hasMore
-      }))
+      const existingIds = new Set(get().aiModels.map((m) => m._id));
+      const newModels = res.data.aiModels.filter((m:any) => !existingIds.has(m._id));
+
+      set((state) => ({
+        aiModels:
+          params?.page === 1
+            ? res.data.aiModels
+            : [...state.aiModels, ...newModels],
+        hasMore: res.data.hasMore,
+      }));
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Failed to fetch AI models");
     } finally {
@@ -92,8 +107,8 @@ export const useAiModelStore = create<AiState>((set) => ({
   },
 
   
-  searchAIModels: async (query) => {
-    if (!query.trim()) {
+  searchAIModels: async (params) => {
+    if (!params?.query?.trim()) {
         set({ searchResults: [] });
         return;
     }
@@ -102,10 +117,20 @@ export const useAiModelStore = create<AiState>((set) => ({
 
     try {
         const res = await axiosInstance.get("/chooseai/get-ai-model", {
-        params: { search: query, page: 1, limit: 20 },
+        params,
         });
 
-        set({ searchResults: res.data.aiModels });
+        const existingIds = new Set(get().searchResults.map((m) => m._id));
+        const newModels = res.data.aiModels.filter((m:any) => !existingIds.has(m._id));
+
+
+       set((state) => ({
+        searchResults:
+          params?.page === 1
+            ? res.data.aiModels
+            : [...state.searchResults, ...newModels],
+        searchHasMore: res.data.hasMore,
+      }));
     } catch (error: any) {
         toast.error(error?.response?.data?.message || "Search failed");
     } finally {
@@ -120,13 +145,17 @@ export const useAiModelStore = create<AiState>((set) => ({
       const res = await axiosInstance.get("/chooseai/reccomended-ai-model", {
         params,
       });
+;
+      const existingIds = new Set(get().forYouModels.map((m) => m._id));
+      const newModels = res.data.models.filter((m:any) => !existingIds.has(m._id));
 
-      console.log(res.data);
-
-      set({
-        forYouModels: res.data.models,
-        hasMore: res.data.hasMore,
-      });
+      set((state) => ({
+        forYouModels:
+          params?.page === 1
+            ? res.data.models
+            : [...state.forYouModels, ...newModels],
+        forYouHasMore: res.data.hasMore,
+      }));
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Failed to fetch AI models");
     } finally {

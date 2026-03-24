@@ -11,6 +11,7 @@ import AccountPage from "./pages/userPage"
 import CreateAiPage from "./pages/createAiPage"
 import MyAiPage from "./pages/myAiModels"
 import UpdateAiPage from "./pages/updateAiPage"
+import ChatPage from "./pages/chatPage"
 
 import MainLayout from "./layout/Mainlayout"
 
@@ -44,6 +45,7 @@ function App() {
                 <Route path="/create" element={<CreateAiPage />} />
                 <Route path="/my-ai" element={<MyAiPage />} />
                 <Route path="/ai-model/update/:id" element={<UpdateAiPage />} />
+                <Route path="/chat/" element={<ChatPage />} />
               </Route>
 
               <Route path="/landingpage" element={<LandingPage/>} />

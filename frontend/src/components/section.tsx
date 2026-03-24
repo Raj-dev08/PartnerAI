@@ -1,31 +1,39 @@
+import { useRef } from "react";
 import ModelCard from "./modelCard";
 
 const Section = ({ title, refEl, scroll, items, onLoadMore }: any) => {
+  const loadingRef = useRef(false);
+
   const handleScroll = () => {
-    if (!refEl.current || !onLoadMore) return;
+    if (!refEl.current || !onLoadMore || loadingRef.current) return;
 
     const el = refEl.current;
 
     const isNearEnd =
       el.scrollLeft + el.clientWidth >= el.scrollWidth - 100;
 
-    if (isNearEnd) {
-      onLoadMore();
-    }
+    if (!isNearEnd) return;
+
+    loadingRef.current = true;
+
+    Promise.resolve(onLoadMore()).finally(() => {
+      setTimeout(() => {
+        loadingRef.current = false;
+      }, 300); // small throttle
+    });
   };
+
 
   return (
     <div className="space-y-4 w-full overflow-hidden">
 
-      {/* TITLE */}
       <h2 className="text-lg font-medium px-2">{title}</h2>
 
-      {/* CAROUSEL */}
       <div className="relative group w-full">
 
         {/* LEFT */}
         <button
-          onClick={() => scroll(refEl, "left")}
+          onClick={() => scroll(refEl, "left",title)}
           className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition bg-black/60 backdrop-blur-md w-10 h-10 rounded-full items-center justify-center"
         >
           ←
@@ -33,7 +41,7 @@ const Section = ({ title, refEl, scroll, items, onLoadMore }: any) => {
 
         {/* RIGHT */}
         <button
-          onClick={() => scroll(refEl, "right")}
+          onClick={() => scroll(refEl, "right",title)}
           className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition bg-black/60 backdrop-blur-md w-10 h-10 rounded-full items-center justify-center"
         >
           →
@@ -42,7 +50,7 @@ const Section = ({ title, refEl, scroll, items, onLoadMore }: any) => {
         {/* SCROLL AREA */}
         <div
           ref={refEl}
-          onScroll={handleScroll}   // 🔥 THIS IS THE FIX
+          onScroll={handleScroll}
           className="
             flex gap-4
             overflow-x-auto

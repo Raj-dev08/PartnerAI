@@ -15,7 +15,7 @@ import PastExperience from "../model/past.model.js";
 import Interest from "../model/interest.model.js";
 import { dbQueues } from "../lib/db.queue.js";
 import UserReference from "../model/userReference.model.js";
-
+import Memory from "../model/memory.model.js";
 
 
 await connectDB();
@@ -107,24 +107,31 @@ const messageWorker = new Worker(
             }
             else{
                 const history = lastMessages.reverse().map(m => m.sentBy + ": " + m.message).join("\n")
+                const last_message = lastMessages[0];
+                
+                const timeDifference = Date.now() - new Date(last_message.createdAt).getTime();
+                
+                let result = "CONTINUE" 
+                if ( timeDifference > 60 * 60 * 1000){
+                    const decision = await openai.chat.completions.create({
+                        model: "meta/llama-3.1-8b-instruct",
+                        messages: [
+                            {
+                                role: "system",
+                                content:
+                                `Decide if the new message continues the same conversation topic or not.`
+                            },
+                            {
+                                role: "user",
+                                content: `Conversation:\n${history}\n\nNew message: ${content}\n\nReply with CONTINUE or NEW_TOPIC`
+                            }
+                        ]
+                    });
 
-                const decision = await openai.chat.completions.create({
-                    model: "meta/llama-3.1-8b-instruct",
-                    messages: [
-                        {
-                            role: "system",
-                            content:
-                            "Decide if the new message continues the same conversation topic or not."
-                        },
-                        {
-                            role: "user",
-                            content: `Conversation:\n${history}\n\nNew message: ${content}\n\nReply with CONTINUE or NEW_TOPIC`
-                        }
-                    ]
-                });
-
-                const result =
-                    decision.choices[0].message.content.trim().toUpperCase();
+                    result =
+                        decision.choices[0].message.content.trim().toUpperCase();
+                }
+                
 
                 isSameContext = result === "CONTINUE";
             }   
@@ -250,47 +257,34 @@ const messageWorker = new Worker(
             return;  
         }
 
-        let systemPrompt = `You are a decision AI. For each incoming message, provide three outputs:
-                        1. "ignoreScore": float 0-1 indicating how much to ignore this message (higher means more likely to ignore).
-                        2. "searchPastExperience": "yes" or "no" depending on whether the message should trigger a search in past experiences.
-                        3. "interest": "yes" or "no" depending on whether the topic is potentially an interest or hobby .
-                        4. "tellAllPast": "yes" or "no" if the user is directly asking about your past and previous incidents or experiences.
-                        5. "tellAllInterest": "yes" or "no" if the user is directly asking about your interests or hobbies .
-                        6. "searchUserMemory": "yes" or "no" depending on whether it is related to user memory or not 
-                        7. "searchAllUserMemory":"yes" or "no" if the user directly commands to tell everything you know about user
+       let systemPrompt = `
+                You are a strict JSON generator.
 
-                        If the message is out of context, increase ignoreScore.
-                        Only reply with valid JSON. 
-                        Do NOT add any text, explanations, apologies, examples, or markdown.
-                        The JSON keys must exactly be: ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory.
-                        Send your output in strict JSON format only, like:
-                        {
-                        "ignoreScore": 0.45,
-                        "searchPastExperience": "yes",
-                        "interest": "no",
-                        "tellAllPast": "no",
-                        "tellAllInterest": "no",
-                        "searchUserMemory":"yes",
-                        "searchAllUserMemory":"no"
-                        }
-                        {
-                        "ignoreScore": 0.85,
-                        "searchPastExperience": "no",
-                        "interest": "yes",
-                        "tellAllPast": "no",
-                        "tellAllInterest": "yes",
-                        "searchUserMemory":"no",
-                        "searchAllUserMemory":"no"
-                        }
-                        {
-                        "ignoreScore": 0.1,
-                        "searchPastExperience": "yes",
-                        "interest": "yes",
-                        "tellAllPast": "yes",
-                        "tellAllInterest": "yes",
-                        "searchUserMemory":"yes",
-                        "searchAllUserMemory":"yes"
-                        }`;
+                Return EXACTLY one JSON object.
+
+                Rules:
+                - Output MUST be valid JSON
+                - No markdown
+                - No explanations
+                - No extra text before or after JSON
+                - No multiple objects
+                - No comments
+
+                Schema:
+                {
+                "ignoreScore": number (0-1),
+                "searchPastExperience": "yes" | "no",
+                "interest": "yes" | "no",
+                "tellAllPast": "yes" | "no",
+                "tellAllInterest": "yes" | "no",
+                "searchUserMemory": "yes" | "no",
+                "searchAllUserMemory": "yes" | "no"
+                }
+
+                If unsure, still return valid JSON.
+
+                Failure to follow format = invalid response.
+                `;
         const previousMessages = await Message.find({
             conversationId: message.conversationId
         }).populate("replyingTo").sort({ createdAt: -1 }).limit(10);
@@ -301,7 +295,7 @@ const messageWorker = new Worker(
         const shortTermMemory = await redis.get(redisKey);
 
         if(shortTermMemory){
-            systemPrompt += `Short Term Memory of this convo :\n${JSON.parse(shortTermMemory)}\n\n`
+            systemPrompt += `Short Term Memory of this convo :\n${shortTermMemory|| ""}\n\n`
         }
         
         const history = previousMessages.reverse().map(m => ` ${m.replyingTo? `Replied to ${m.replyingTo.sentBy} : ${m.replyingTo.message}` : ``} ${m.sentBy} :  ${m.message}`).join("\n")
@@ -326,23 +320,36 @@ const messageWorker = new Worker(
 
         let result
         try {
-            result = decision.choices[0].message.content;
-            if (result.startsWith("```json")){
-                result = JSON.parse(result.replace(/```json|```/g, '').trim());
-            }else{
-                result = JSON.parse(result)
+            let raw = decision.choices[0].message.content.trim();
+
+            raw = raw.replace(/```json|```/g, "").trim();
+
+            const match = raw.match(/\{[\s\S]*?\}/);
+
+            if (!match) {
+                throw new Error("No JSON found");
             }
+
+            result = JSON.parse(match[0]);
         } catch (err) {
-            throw new Error(err)
+            console.log(err)
+            const hardFallBack = {
+                ignoreScore: 0.4,
+                searchPastExperience: "yes",
+                interest: "yes",
+                tellAllPast: "no",
+                tellAllInterest: "no",
+                searchUserMemory: "yes",
+                searchAllUserMemory: "no",
+            }
+            result = hardFallBack;
         }
 
         const { ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory} = result;
 
-        
 
-        const randomNess = Math.random() ;
-
-        if ( ignoreScore > randomNess ){
+        if ( ignoreScore > 0.5 + Math.random() * 0.2){
+            console.log("ignoring",ignoreScore)
             const delayMs = (Math.random() * 5 ) * 60 * 60 * 1000 + Math.random() * 60 * 60 * 1000;
             await messageQueue.add("startNewConvo", {
                 userId,
@@ -363,6 +370,10 @@ const messageWorker = new Worker(
             });
             return;
         }
+
+        await emitSocketEvent(userId.toString(), "aiStartedTyping", {
+            aiId:aiModel._id.toString()
+        })
 
         
         let pastExperiences;
@@ -576,9 +587,10 @@ const messageWorker = new Worker(
             Trust Building Rate: ${aiModel.trustBuildingRate}
 
             Closeness with user: ${user.AiModelCloseness}
-
-            Occupation: ${aiModel.occupation}
-            Occupation Weightage: ${aiModel.occupationWeightage}
+            
+            ${aiAge > 22 ? `Occupation: ${aiModel.occupation}
+            Occupation Weightage: ${aiModel.occupationWeightage}` : `Occupation : None`}
+            
             Academic Background: ${aiModel.academicBackground}
             Academic Background Weightage: ${aiModel.academicBackgroundWeightage}
 
@@ -635,6 +647,7 @@ const messageWorker = new Worker(
 
             Rules:
             • Return only an ARRAY
+            • Dont focus too much on grammer and spelling use "." , "," based on persona not everytime
             • No explanations
             • No markdown
             • Dont send too many messages. Send messages based on persona
@@ -650,7 +663,7 @@ const messageWorker = new Worker(
             ${history}
 
             Short Term Memomry:
-            ${shortTermMemory ? `${JSON.parse(shortTermMemory)}\n\n`:``}
+            ${shortTermMemory ? `${shortTermMemory || ""}\n\n`:``}
 
             Sometimes even if user asks for past info that is in your short term memory say i forgot to mimic human behaviour.
             
@@ -686,6 +699,7 @@ const messageWorker = new Worker(
 
         try {
             output = JSON.parse(outputRaw);
+            console.log(output)
         } catch {
             const cleanUpDataPrompt = `
                 You are an AI whose task is to strictly format input according to the given output example.
@@ -717,10 +731,15 @@ const messageWorker = new Worker(
 
             try {
                 output = JSON.parse(cleanedOutputRaw);
+                console.log(output)
             } catch (err) {
                 throw new Error(err)
             }
         }
+
+        await emitSocketEvent(userId.toString(), "aiStoppedTyping", {
+            aiId:aiModel._id.toString()
+        })
 
         if (output.length === 0){
             return
@@ -729,12 +748,21 @@ const messageWorker = new Worker(
         for ( const msg of output){
 
             if (typeof msg !== "string") continue;
+
+            const formalityLevel = Math.random() * aiModel.speechPatterns.formalityLevel
+
+            let content = msg
+            if ( msg[-1] == "."){
+                if ( formalityLevel < 5){
+                    content = msg.slice(0, -1)
+                }
+            }   
             const newMessage = new Message({
                 userId,
                 aiId: message.aiId,
                 conversationId: message.conversationId,
                 sentBy: "ai",
-                message: msg,
+                message: content,
                 status: "completed"
             });
 

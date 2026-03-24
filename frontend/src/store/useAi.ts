@@ -70,7 +70,7 @@ type AiBuilderState = {
   createPastExperience: (data: ExperiencePayload) => Promise<boolean>;
 };
 
-export const useAiBuilderStore = create<AiBuilderState>((set) => ({
+export const useAiBuilderStore = create<AiBuilderState>((set,get) => ({
   myCreatedAi: [],
   loading: false,
   updatingModel: null,
@@ -82,7 +82,7 @@ export const useAiBuilderStore = create<AiBuilderState>((set) => ({
       const res = await axiosInstance.post("/ai/generate", data);
 
       set((state)=> ({
-        myCreatedAi: [...state?.myCreatedAi || null, res.data.aiModel]
+        myCreatedAi: get().myCreatedAi.length > 0 ? [...state.myCreatedAi, res.data.aiModel] : [res.data.aiModel]
       }));
 
       toast.success("AI model created");

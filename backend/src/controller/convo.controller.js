@@ -45,7 +45,11 @@ export const userSendsMessage = async (req, res, next) => {
             tempId,
             message: "Message queued successfully" ,
             status: "pending" ,
-            content
+            content,
+            userId: user._id,
+            replyingTo: replyngTo || null,
+            sentBy: "user",
+            aiId: user.AiModel
         });
     } catch (error) {
         next(error);
