@@ -9,14 +9,14 @@ import User from "../model/user.model.js";
 import { messageQueue } from "../lib/message.queue.js";
 import { pineconeIndex } from "../lib/pinecone.js";
 import AiModel from "../model/ai.model.js";
-import axios from "axios";
+import axios, { all } from "axios";
 import { sendNotificationToExpo } from "../lib/expoPushNotification.js";
 import PastExperience from "../model/past.model.js";
 import Interest from "../model/interest.model.js";
 import { dbQueues } from "../lib/db.queue.js";
 import UserReference from "../model/userReference.model.js";
 import Memory from "../model/memory.model.js";
-
+import aiMemory from "../model/aimemory.model.js";
 
 await connectDB();
 
@@ -25,7 +25,8 @@ const openai = new OpenAI({
   baseURL: process.env.AI_URL
 });
 
-//TO-DO :CLEAN IT LATER WITH SEPERATE FUNCTIONS 
+//TO-DO : CLEAN IT LATER WITH SEPERATE FUNCTIONS 
+//TO-DO : If redis is exploding cuz it has users then add remove on complete in the jobs
 
 const messageWorker = new Worker(
   "message-queue",
@@ -63,6 +64,7 @@ const messageWorker = new Worker(
             });
 
             await newMessage.save();
+            await newMessage.populate("replyingTo");
 
             newConvo.messages.push(newMessage._id);
             await newConvo.save();
@@ -152,6 +154,8 @@ const messageWorker = new Worker(
             });
 
             await newMessage.save();
+            await newMessage.populate("replyingTo");
+
 
             await Conversation.findByIdAndUpdate(lastConvo._id, {
                 $push: {
@@ -206,6 +210,9 @@ const messageWorker = new Worker(
 
             await newMessage.save();
 
+            await newMessage.populate("replyingTo");
+
+
             newConvo.messages.push(newMessage._id);
             await newConvo.save();
 
@@ -258,19 +265,59 @@ const messageWorker = new Worker(
         }
 
        let systemPrompt = `
-                You are a strict JSON generator.
+                You are a decision engine for an AI companion system.
 
-                Return EXACTLY one JSON object.
+                Your job is to analyze the user's message and decide what context is needed to generate the best possible response.
 
-                Rules:
-                - Output MUST be valid JSON
-                - No markdown
-                - No explanations
-                - No extra text before or after JSON
-                - No multiple objects
-                - No comments
+                You MUST return EXACTLY one valid JSON object.
 
-                Schema:
+                ---------------------
+                DECISION LOGIC
+                ---------------------
+
+                Think before answering:
+
+                1. Ignore decision:
+                - Set "ignoreScore" high (>=0.5) if:
+                • Message is dry, low effort, or not meaningful (e.g. "ok", "hmm", "k")
+                • Conversation is one-sided (AI already sent multiple messages)
+                • No response would feel more human
+
+                - Set low (<0.5) if:
+                • User expects reply
+                • Message contains question, emotion, or engagement
+
+                2. Past Experience (AI):
+                - "searchPastExperience": yes if message relates to past events, stories, or experiences
+                - "tellAllPast": yes ONLY if user explicitly asks for full history or deep explanation
+
+                3. Interests (AI):
+                - "interest": yes if message relates to hobbies, likes, preferences
+                - "tellAllInterest": yes ONLY if user asks broadly about interests
+
+                4. User Memory:
+                - "searchUserMemory": yes if message relates to user’s past behavior, preferences, or facts
+                - "searchAllUserMemory": yes ONLY if full context is needed (rare)
+
+                5. AI Memory:
+                - "searchAIMemory": yes if response requires:
+                • consistency in personality
+                • recalling previous AI statements
+                • maintaining relationship continuity
+
+                ---------------------
+                IMPORTANT RULES
+                ---------------------
+
+                - Prefer minimal data usage (don’t fetch everything unless needed)
+                - Be selective, not greedy
+                - If unsure, choose "no" for heavy operations (tellAll / searchAll)
+                - Always return all fields
+
+                ---------------------
+                OUTPUT FORMAT
+                ---------------------
+
                 {
                 "ignoreScore": number (0-1),
                 "searchPastExperience": "yes" | "no",
@@ -278,12 +325,22 @@ const messageWorker = new Worker(
                 "tellAllPast": "yes" | "no",
                 "tellAllInterest": "yes" | "no",
                 "searchUserMemory": "yes" | "no",
-                "searchAllUserMemory": "yes" | "no"
+                "searchAllUserMemory": "yes" | "no",
+                "searchAIMemory": "yes" | "no"
                 }
 
-                If unsure, still return valid JSON.
+                ---------------------
+                STRICT RULES
+                ---------------------
 
-                Failure to follow format = invalid response.
+                - Output MUST be valid JSON
+                - No markdown
+                - No explanations
+                - No extra text
+                - No comments
+                - No multiple objects
+
+                Failure = invalid response.
                 `;
         const previousMessages = await Message.find({
             conversationId: message.conversationId
@@ -341,14 +398,16 @@ const messageWorker = new Worker(
                 tellAllInterest: "no",
                 searchUserMemory: "yes",
                 searchAllUserMemory: "no",
+                searchAIMemory: "no"
             }
             result = hardFallBack;
         }
 
-        const { ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory} = result;
+        const { ignoreScore, searchPastExperience, interest, tellAllPast, tellAllInterest, searchUserMemory, searchAllUserMemory, searchAIMemory} = result;
 
+        // console.log(result , decision.choices[0].message.content.trim())
 
-        if ( ignoreScore > 0.5 + Math.random() * 0.2){
+        if ( ignoreScore > 0.5){
             console.log("ignoring",ignoreScore)
             const delayMs = (Math.random() * 5 ) * 60 * 60 * 1000 + Math.random() * 60 * 60 * 1000;
             await messageQueue.add("startNewConvo", {
@@ -446,6 +505,8 @@ const messageWorker = new Worker(
 
         let allPastExp
         let allInterest
+        let allUserMemory
+        let allAiMemory
 
 
         if (tellAllPast === "yes"){
@@ -466,6 +527,118 @@ const messageWorker = new Worker(
             })
         }
 
+        if( searchAllUserMemory === "yes"){
+            allUserMemory = user.memories
+        }
+
+        if (searchAIMemory === "yes"){
+            const res = await aiMemory.findOne({
+                aiId: message.aiId,
+                userId: user._id
+            })
+
+            if (res){
+                if ( res._id.toString() !== user.aiMemory.toString()){
+                    console.log("Data integrity loss check it now")
+                    return;
+                }
+
+                allAiMemory = res
+            }
+
+        }
+
+        const memoryCompressor = `
+            You are a memory compressor.
+
+            Your job is to compress given data into short, relevant facts for responding to the current message.
+
+            INPUT:
+            - Current Message
+            - Past Experiences (AI)
+            - Interests (AI)
+            - User Memory
+            - Ai Memory
+
+            RULES:
+            - Keep only information relevant to the Current Message
+            - Do NOT omit important information
+            - Remove redundancy
+            - Keep facts accurate
+            - DO NOT mix sources
+            - Clearly label each fact with its source:
+            [AI], [USER]
+            - Ignore useless or unrelated data
+            - Keep all ai related info under [AI] and all user related info under [USER]
+
+            OUTPUT FORMAT:
+            [AI] ...
+            [USER] ...
+
+            Only return bullets. No explanations.
+            `
+
+        let summarizedText = ""
+        if ( tellAllInterest ==="yes" 
+            || tellAllPast === "yes" 
+            || searchAllUserMemory === "yes"
+            || searchAIMemory === "yes"
+        ){
+            allPastExp = allPastExp?.slice(-20);
+            allInterest = allInterest?.slice(-20);
+            allUserMemory = allUserMemory?.slice(-20);
+            
+            try {
+                const memResult = await openai.chat.completions.create({
+                model: "meta/llama3-70b-instruct",
+                    messages: [
+                        {
+                            role: "system",
+                            content: memoryCompressor
+                        },
+                        {
+                            role: "user",
+                            content: `
+                                    Current message: ${message.message}
+                                    ${allPastExp? `Past Experiences: 
+                                        ${allPastExp.map( e => `
+                                            Event: ${e.event},
+                                            Description: ${e.description},
+                                            Age: ${e.ageDuringEvent}`
+                                        ).join("\n\n")}` : ``} 
+                                    ${allInterest? `Interests: 
+                                        ${allInterest.map( i => `
+                                            Interest: ${i.interest},
+                                            Description: ${i.description},
+                                            ReasonForInterest: ${i.reasonForInterest},
+                                            Achievements: ${i.acheivements},
+                                            Age: ${i.ageWhileInterest}`
+                                        ).join("\n\n")}` : ``}
+                                    ${allUserMemory? `User Memory: 
+                                        ${allUserMemory.map( m => `
+                                            Title: ${m.title},
+                                            Description: ${m.description},
+                                            MessageReference: ${m.messageReference}`
+                                        ).join("\n\n")}` : ``}
+                                        
+                                    ${allAiMemory? `Ai Memory: 
+                                        ${allAiMemory.map(a => 
+                                            `AiMemory: ${a.memory}`
+                                        )}` : `` }
+                                    `
+                        }
+                    ]
+                });
+
+            const memRaw = memResult.choices[0].message.content.trim();
+
+            summarizedText = memRaw
+            } catch {
+                summarizedText = ""
+            }
+            
+        }
+        
 
         const pastExperienceMemories = (pastExperiences?.matches || [])
             .filter(m => m.score >= 0.7)
@@ -522,35 +695,8 @@ const messageWorker = new Worker(
                     .join("\n\n")}`  : ``
             }
 
-            ${allPastExp
-                ? `Past Experiences: 
-                    ${allPastExp.map( p => `Event: ${p.event}, Description: ${p.description}, Age: ${p.age}`).join("\n")}
-                `:``
+            Summarized Memory : ${summarizedText}
             }
-
-            ${allInterest
-                ? `Past Experiences: 
-                    ${allInterest.map( p => `
-                        Event: ${p.event}, 
-                        Description: ${p.description}, 
-                        ReasonForInterest: ${p.reasonForInterest}, 
-                        Achievements: ${p.acheivements}, 
-                        Age: ${p.age}`
-                    ).join("\n")}
-                `:``
-            }
-
-            ${searchAllUserMemory ==="yes"?
-                `
-                User memories:
-                ${user.memories.map(m => `
-                    Title: ${m.title}
-                    Description: ${m.description}
-                    Importance: ${m.importance}
-                    MessageReference: ${m.messageReference}
-                `).join("\n")}
-                `:``
-                }
             `;
         
         const aiGender  = `${user.gender == `other` ? `other` : user.gender == 'male' ? 'female' : 'male'}`
@@ -609,6 +755,7 @@ const messageWorker = new Worker(
             3. You may ask questions, respond, tease, deny, or stay quiet.
             4. You are allowed to swear and say cuss word according to communication style and persona
             5. Slowly ask questions about user to know more about the user like their interests , goals , routines etc but do so occasionaly if its appropriate
+            6. Generate new info if the relevant info isn't covering the answer
 
             Talkativeness controls message count:
             0-3 → short replies
@@ -745,6 +892,7 @@ const messageWorker = new Worker(
             return
         }
 
+        let lastMessageId 
         for ( const msg of output){
 
             if (typeof msg !== "string") continue;
@@ -779,6 +927,8 @@ const messageWorker = new Worker(
             if (user.expoToken){
                 await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
             }
+
+            lastMessageId = newMessage._id
             
         }
 
@@ -857,10 +1007,14 @@ const messageWorker = new Worker(
 
         await redis.set(redisKey, updatedMemory, "EX", 30 * 60) //remember for 30 mins of inactivity
 
+        await dbQueues.add("createAiMemory",{
+            messageId: lastMessageId,
+            userId,
+        })
         await dbQueues.add("createUserMemory", {
             message,
             userId,
-            recentMessages: history
+            recentMessages: previousMessages
         })        
     }
     else if (job.name === "startNewConvo"){
@@ -913,6 +1067,29 @@ const messageWorker = new Worker(
             return
         }
 
+        await messageQueue.add("rateConvo",{
+            conversationId: message.conversationId,
+            userId: user._id,
+            aiId: user.AiModel
+        },{
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
+
+        await messageQueue.add("updateUserReference",{
+            conversationId: message.conversationId,
+            userId: user._id,
+            aiId: user.AiModel
+        }, {
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
 
 
         const previousMessages = await Message.find({

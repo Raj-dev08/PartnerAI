@@ -6,7 +6,7 @@ import crypto from "crypto";
 export const userSendsMessage = async (req, res, next) => {
     try {
         const { user } = req;
-        const { content, replyngTo } = req.body; 
+        const { content, replyingTo } = req.body; 
 
         if(user.isDisabled){
             return res.status(403).json({ message: "User is disabled" });
@@ -15,9 +15,10 @@ export const userSendsMessage = async (req, res, next) => {
         if(!content || !content.trim()){
             return res.status(400).json({ message: "Message content is required" });
         }
+        let reply
 
-        if(replyngTo) {
-            const reply = await Message.findById(replyngTo);
+        if(replyingTo) {
+            reply = await Message.findById(replyingTo);
 
             if(!reply){
                 return res.status(404).json({ message: "Reply not found" });
@@ -30,7 +31,7 @@ export const userSendsMessage = async (req, res, next) => {
         await messageQueue.add("processMessage", {
             userId: user._id,
             content,
-            replyngTo: replyngTo || null,
+            replyingTo: replyingTo || null,
             tempId
         },{
             attempts: 3,
@@ -47,7 +48,11 @@ export const userSendsMessage = async (req, res, next) => {
             status: "pending" ,
             content,
             userId: user._id,
-            replyingTo: replyngTo || null,
+            replyingTo: {
+                _id: replyingTo,
+                message: reply?.message,
+                sentBy: reply?.sentBy
+            },
             sentBy: "user",
             aiId: user.AiModel
         });
@@ -71,7 +76,7 @@ export const getMessages = async (req, res, next) => {
             userId: user._id,
             aiId, 
             createdAt: { $lt: before ? new Date(before) : new Date()} 
-        })
+        }).populate("replyingTo")
             .sort({ createdAt: -1 })
             .limit(limit);
         

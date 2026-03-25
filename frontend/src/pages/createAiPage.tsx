@@ -37,6 +37,7 @@ export default function CreateAiPage() {
       slangUsage: 5,
       formalityLevel: 5,
       typingStyle: "normal",
+      catchphrases: ""
     },
     birthDate: "",
     birthMonth: "January",
@@ -52,6 +53,14 @@ export default function CreateAiPage() {
     if (!form.maleName) newErrors.maleName = "Required";
     if (!form.femaleName) newErrors.femaleName = "Required";
     if (!form.otherName) newErrors.otherName = "Required";
+
+    if(form.speechPatterns.catchphrases){
+      const arr = form.speechPatterns.catchphrases.split(",")
+      if (arr.length > 5) newErrors.catchphrases = "Max 5 catchphrases";
+      for (const a of arr) {
+        if (a.length > 40) newErrors.catchphrases = "Each must be < 40 chars";
+      }
+    }
 
     if (!form.aiType) newErrors.aiType = "Required";
     if (form.aiType.length > 20) newErrors.aiType = "Max 20 chars";
@@ -90,6 +99,20 @@ export default function CreateAiPage() {
     }));
   };
 
+  const handleChangeForCatchPhrase = (e :any) => {
+    const { value } = e.target;
+    setForm((prev:any) => {
+        const newState = { ...prev };
+
+        newState.speechPatterns = {
+          ...newState.speechPatterns,
+          catchphrases: value
+        }
+
+        return newState;
+    });
+  }
+
   const handleChangeForNumbers = (e: any) => {
     const { name, value } = e.target;
     const regex = name === "age" ? /^-?\d*$/ : /^\d*$/;
@@ -127,7 +150,11 @@ export default function CreateAiPage() {
         age: Number(form.age),
         birthDate: Number(form.birthDate),
         occupationWeightage: Number(form.occupationWeightage),
-        academicBackgroundWeightage: Number(form.academicBackgroundWeightage)
+        academicBackgroundWeightage: Number(form.academicBackgroundWeightage),
+        speechPatterns: {
+          ...form.speechPatterns,
+          catchphrases: form.speechPatterns.catchphrases.split(",")
+        }
     }
     if(!validate()) return;
 
@@ -201,6 +228,24 @@ export default function CreateAiPage() {
               maxLength={200}
               className={inputClass}
             />
+          </div>
+
+
+          <div>
+            <label className={labelClass}>
+              <span>CatchPhrases (seperated by commas ',' )</span>
+              <span>Optional</span>
+            </label>
+            <textarea
+              value={form.speechPatterns.catchphrases}
+              onChange={handleChangeForCatchPhrase}
+              maxLength={200}
+              className={inputClass}
+            />
+
+            {errors.catchphrases && (
+              <p className="text-red-500 text-xs mt-1">{errors.catchphrases}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

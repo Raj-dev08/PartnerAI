@@ -12,7 +12,7 @@ type Message = {
   sentBy: "user" | "ai";
   status: "pending" | "completed" | "failed";
   createdAt:  Date | string;
-  replyingTo?: string | null;
+  replyingTo?: string | null | any;
 };
 
 type ChatState = {
@@ -65,7 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const res  = await axiosInstance.post("/convo/user-sends-message", {
         content,
-        replyngTo: replyingTo,
+        replyingTo,
       });
 
       const payload: Message = {

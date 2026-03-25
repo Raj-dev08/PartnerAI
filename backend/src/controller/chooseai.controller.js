@@ -4,6 +4,9 @@ import { pineconeIndex } from "../lib/pinecone.js";
 import axios from "axios";
 import { redis } from "../lib/redis.js";
 import { messageQueue } from "../lib/message.queue.js";
+import Conversation from "../model/conversation.model.js";
+import Message from "../model/message.model.js";
+import aiMemory from "../model/aimemory.model.js";
 
 export const firstAIModel = async(req,res,next) => {
     try {
@@ -11,10 +14,6 @@ export const firstAIModel = async(req,res,next) => {
 
         if ( user.isDisabled ){
             return res.status(400).json({ message: "User is disabled" });   
-        }
-
-        if ( user.AiModel ){
-            return res.status(400).json({ message: "User already has an AI model" });
         }
 
         const totalAICount = await AiModel.countDocuments({ isVerified: true});
@@ -34,8 +33,17 @@ export const firstAIModel = async(req,res,next) => {
             aiModel.eligibleRater.push(user._id);
             await aiModel.save();
         }
+        if(user.AiModel){
+            await aiMemory.deleteOne({
+                userId: user._id,
+                aiId: user.AiModel
+            })
+        }
 
         user.AiModel = aiModel._id;
+
+        user.aiMemory = null;
+
         await user.save();
 
         await UserReference.updateOne(
@@ -98,10 +106,55 @@ export const switchAIModel = async(req,res,next) => {
             await aiModel.save();
         }
         
+        await Conversation.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        await Message.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+
+        if ( user.AiModel && user.aiMemory){
+            user.aiMemory = null;
+        
+            await aiMemory.deleteOne({
+                userId: user._id,
+                aiId: user.AiModel
+            })
+        }
+       
 
         user.AiModel = aiModel._id;
         user.AiModelCloseness = 0;
         await user.save();
+
+        await UserReference.updateOne(
+            {
+                _id: user.userReference,
+                "modelReference.modelId": { $ne: aiModel._id }
+            },
+            {
+                $push: {
+                modelReference: { modelId: aiModel._id }
+                }
+            }
+        );
+       
+        await messageQueue.add("startBrandNewConvo", {
+            userId: user._id // will fetch ai details so it is for user not just for ai
+        },{
+            delay: 1000, // 1s delay for first message then it will be random and dynamic
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
+
+        
 
         return res.status(200).json({
             message: "AI model switched successfully",
@@ -112,6 +165,54 @@ export const switchAIModel = async(req,res,next) => {
     }
 }
 
+export const removeAIModel = async(req,res,next) => {
+    try {
+        const { user } = req;
+
+        if ( user.isDisabled ){
+            return res.status(400).json({ message: "User is disabled" });
+        }
+
+        if (!user.AiModel){
+            return res.status(400).json({ message: "User does not have an AI model" });
+        }
+
+        const aiModel = await AiModel.findById(user.AiModel)
+
+        if(!aiModel){
+            return res.status(404).json({ message: "AI model not found" });
+        }
+
+        await Conversation.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        await Message.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        user.aiMemory = null;
+        await aiMemory.deleteOne({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        user.AiModel = null;
+       
+        await user.save();
+
+        
+
+        return res.status(200).json({
+            message: "AI model removed successfully",
+        });
+    } catch (error) {
+        next(error)
+    }
+}
+        
 export const getAIModel = async(req,res,next) => {
     try {
         const { user } = req
@@ -187,8 +288,52 @@ export const setAIModel = async(req,res,next) => {
             await aiModel.save();
         }
 
+        await Conversation.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        await Message.deleteMany({
+            userId: user._id,
+            aiId: user.AiModel
+        })
+
+        if ( user.AiModel && user.aiMemory){
+            user.aiMemory = null;
+
+            await aiMemory.deleteOne({
+                userId: user._id,
+                aiId: user.AiModel
+            })
+        }   
+        
+
         user.AiModel = aiModel._id;
+    
         await user.save();
+
+        await UserReference.updateOne(
+            {
+                _id: user.userReference,
+                "modelReference.modelId": { $ne: aiModel._id }
+            },
+            {
+                $push: {
+                modelReference: { modelId: aiModel._id }
+                }
+            }
+        );
+
+        await messageQueue.add("startBrandNewConvo", {
+            userId: user._id // will fetch ai details so it is for user not just for ai
+        },{
+            delay: 1000, // 1s delay for first message then it will be random and dynamic
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
 
         return res.status(200).json({
             message: "AI model set successfully",

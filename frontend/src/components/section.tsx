@@ -1,8 +1,14 @@
-import { useRef } from "react";
+import { useRef ,useEffect} from "react";
 import ModelCard from "./modelCard";
+import { useAuthStore } from "../store/useAuthStore";
 
 const Section = ({ title, refEl, scroll, items, onLoadMore }: any) => {
   const loadingRef = useRef(false);
+  const { user, checkAuth } = useAuthStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
 
   const handleScroll = () => {
     if (!refEl.current || !onLoadMore || loadingRef.current) return;
@@ -66,7 +72,7 @@ const Section = ({ title, refEl, scroll, items, onLoadMore }: any) => {
               key={model._id}
               className="flex-shrink-0 w-[160px] sm:w-[220px] snap-start"
             >
-              <ModelCard model={model} />
+              <ModelCard model={model} user={user}/>
             </div>
           ))}
         </div>

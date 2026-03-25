@@ -67,6 +67,8 @@ type AiState = {
   setAIModel: (id: string) => Promise<boolean>;
 
   rateAIModel: (id: string, rating: number) => Promise<boolean>;
+
+  removeAIModel: () => Promise<boolean>;
 };
 
 export const useAiModelStore = create<AiState>((set,get) => ({
@@ -241,6 +243,26 @@ export const useAiModelStore = create<AiState>((set,get) => ({
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Failed");
       return false;
+    }
+  },
+
+  removeAIModel: async () => {
+    set({ loadingForSettingAi: true });
+    try {
+      await axiosInstance.put("/chooseai/remove-ai-model");
+
+      // 🔥 Reset everything cleanly (important)
+      set({
+        myAiModel: null,
+      });
+
+      toast.success("AI removed");
+      return true;
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed");
+      return false;
+    } finally {
+      set({ loadingForSettingAi: false });
     }
   },
 }));

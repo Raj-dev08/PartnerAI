@@ -72,6 +72,11 @@ const userSchema = new mongoose.Schema(
             default: false,
         },
 
+        aiMemory: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "AiMemory",
+        },
+
         userReference: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "UserReference",
