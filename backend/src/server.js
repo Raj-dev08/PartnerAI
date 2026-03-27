@@ -37,7 +37,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: process.env.CLIENT_URL,
     credentials: true,
     exposedHeaders: ["Authorization"]
   })
@@ -52,6 +52,9 @@ app.use("/api/experience", protectRoute, experienceRoutes);
 app.use("/api/interest", protectRoute, interestRoutes);
 app.use("/api/convo", protectRoute, convoRoutes);
 
+app.get("/api/health", (req, res) => {
+  return res.status(200).json({ message: "OK" })
+})
 
 
 app.use(errorHandler)

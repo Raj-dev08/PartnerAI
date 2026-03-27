@@ -1,5 +1,6 @@
 import { Routes, Route ,Navigate } from "react-router-dom"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import { axiosInstance } from "./lib/axios"
 
 import { useAuthStore } from "./store/useAuthStore"
 
@@ -18,17 +19,41 @@ import MainLayout from "./layout/Mainlayout"
 
 import { Toaster } from "react-hot-toast"
 import { Loader } from "lucide-react"
+import axios from "axios"
 
 
 function App() {
   const { isCheckingAuth, user , checkAuth } = useAuthStore()
+  const [isBackendReady, setIsBackendReady] = useState(false);
+
+  const checkBackend = async () => {
+    try {
+      await axiosInstance.get("/health"); 
+      await axios.get(import.meta.env.VITE_HF_URL)
+      setIsBackendReady(true);
+    } catch (err) {
+      setTimeout(checkBackend, 2000);
+    }
+  };
+
+  useEffect(() => {
+    checkBackend();
+  }, []);
 
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    if(isBackendReady){
+      checkAuth()
+    }
+   
+  }, [isBackendReady])
 
 
+
+
+  if (!isBackendReady) {
+    return <LandingPage />; 
+  }
   if (isCheckingAuth && !user)
     return (
       <div className="flex items-center justify-center h-screen">
@@ -47,8 +72,6 @@ function App() {
                 <Route path="/ai-model/update/:id" element={<UpdateAiPage />} />
                 <Route path="/chat/" element={<ChatPage />} />
               </Route>
-
-              <Route path="/landingpage" element={<LandingPage/>} />
               <Route path="/signup" element={user? <Navigate to="/"/>:<SignupPage />} />
               <Route path="/login" element={user? <Navigate to="/"/>: <LoginPage />} />
           </Routes>

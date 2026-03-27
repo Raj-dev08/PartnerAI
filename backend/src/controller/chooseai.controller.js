@@ -556,6 +556,7 @@ export const reccomendedAIModel = async (req, res, next) => {
             await redis.set(queryText, JSON.stringify(pineconeResults), "EX", 60 * 60 );
         }
 
+        console.log("coming")
        
         const ids = pineconeResults.matches.map(m => m.id);
 
