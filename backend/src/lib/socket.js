@@ -3,12 +3,11 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
 
 let io;
-
 export const initSocket = async (server) => {
 
   io = new Server(server, {
     cors: {
-      origin: ["http://localhost:5173"],
+      origin: [process.env.CLIENT_URl],
       credentials: true
     }
   });
