@@ -3,7 +3,7 @@ import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import {io} from "socket.io-client"
 
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5000" : "/";//url of backend
+const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5000" : import.meta.env.VITE_API_URL;//url of backend
 
 type User = {
   _id: string;
