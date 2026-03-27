@@ -7,7 +7,7 @@ export const initSocket = async (server) => {
 
   io = new Server(server, {
     cors: {
-      origin: [process.env.CLIENT_URl],
+      origin: [process.env.CLIENT_URL],
       credentials: true
     }
   });
