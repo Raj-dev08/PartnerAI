@@ -44,10 +44,14 @@ function App() {
 
 
   useEffect(() => {
-    if(isBackendReady){
-      checkAuth()
-      subscribeToSocketForNotification()
+    const init = async () =>{
+      if(isBackendReady){
+        await checkAuth()
+        subscribeToSocketForNotification()
+      }   
     }
+    
+    init()
    
   }, [isBackendReady])
 

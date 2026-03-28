@@ -13,7 +13,7 @@ import { useAiModelStore } from "../store/useChooseAi";
 import { useChatStore } from "../store/useChatStore";
 
 export default function BottomNav() {
-  const { user } = useAuthStore();
+  const { user, checkAuth } = useAuthStore();
   const { seeBadge , setBadgeToFalse} = useChatStore()
   const { firstAIModel, switchAIModel } = useAiModelStore();
   const location = useLocation();
@@ -36,10 +36,8 @@ export default function BottomNav() {
     
     if(!suc) return
     setShowRandom(false);
+    await checkAuth()
 
-    setTimeout(() => {
-      window.location.reload();
-    }, 500); // delay in ms
   };
 
   return (

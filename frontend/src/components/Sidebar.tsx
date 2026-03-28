@@ -136,9 +136,7 @@ export default function Sidebar() {
                       }
                       if (!suc) return;
                       setShowRandom(false);
-                      setTimeout(() => {
-                        window.location.reload();
-                      }, 500);
+                      await checkAuth()
                     }}
                     className="w-full text-xs bg-neutral-700 py-1.5 rounded-md active:scale-95"
                   >

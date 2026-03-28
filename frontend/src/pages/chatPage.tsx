@@ -198,8 +198,7 @@ export default function ChatPage() {
                 const success = await removeAIModel();
                 if (success) {
                   navigate("/");
-                  // optional: redirect or reload state
-                  window.location.reload(); // simplest for now
+                  await checkAuth()
                 }
               }}
               className="w-full text-left px-4 py-2 text-sm hover:bg-neutral-800 text-red-400"

@@ -569,7 +569,7 @@ export const reccomendedAIModel = async (req, res, next) => {
       
         let models = await AiModel.find({
             _id: { $in: paginatedIds }
-        });
+        }).populate("madeBy", "name email");
 
         models.sort((a, b) => {
             if (a.isVerified !== b.isVerified) {

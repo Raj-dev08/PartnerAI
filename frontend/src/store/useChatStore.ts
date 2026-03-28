@@ -39,10 +39,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loading: false,
   sending: false,
   typingAi: null,
-  seeBadge: false,
+  seeBadge: localStorage.getItem("seeBadge") === "true" ? true : false,
 
   setBadgeToFalse: () => {
     set({seeBadge: false})
+    localStorage.setItem("seeBadge", "false");
   },
 
 
@@ -115,7 +116,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
 
     socket.on("messageConfirmed",({tempId,message} : any) => {
-      console.log(message, tempId , get().messages)
       set((state) => ({
         messages: state.messages.map((m) => m._id === tempId ? message : m),
       }))
@@ -142,11 +142,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 
     socket.on("newMessage", (data : any) =>{
+      console.log("coming")
       const currentPath = window.location.pathname;
+      console.log(currentPath)
 
       if (currentPath !== "/chat") {
         toast.success(`${data.name} sent you a message!`);
         set({ seeBadge: true });
+        localStorage.setItem("seeBadge", "true");
       }
     })
   }

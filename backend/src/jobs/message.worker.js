@@ -924,9 +924,7 @@ const messageWorker = new Worker(
                 message: newMessage
             });
 
-            await emitSocketEvent(userId.toString(), "newMessage", {
-                name: aiName
-            });
+            
 
             if (user.expoToken){
                 await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
@@ -935,6 +933,10 @@ const messageWorker = new Worker(
             lastMessageId = newMessage._id
             
         }
+
+        await emitSocketEvent(userId.toString(), "newMessage", {
+            name: aiName
+        });
 
         const updateMemoryPrompt = ` You are a Short-Term Memory Update Engine.
 
@@ -1291,6 +1293,10 @@ const messageWorker = new Worker(
 
         }
 
+        await emitSocketEvent(userId.toString(), "newMessage", {
+            name: aiName
+        });
+
         await redis.set(redisKeyForStart, true, "EX" ,  60 * 60 * 2) //2 hours
     }
     else if (job.name === "rateConvo"){
@@ -1439,8 +1445,6 @@ const messageWorker = new Worker(
 
         const user = await User.findById(userId);
 
-       
-
 
         if(!user){
             console.log("user doesnt exist")
@@ -1458,8 +1462,8 @@ const messageWorker = new Worker(
         
         const lastMessageSentByUser = await Message.findOne({
             userId,
+            sentBy: "user"
         }).sort({ createdAt: -1 });
-
         
         if ( lastMessageSentByUser){
             const timeDiff = Date.now() - new Date(lastMessageSentByUser.createdAt).getTime();
@@ -1519,6 +1523,7 @@ const messageWorker = new Worker(
             throw new Error("Embedding service failed");
         }
         const queryEmbedding = data.embedding;
+
 
         const ragInfo = await pineconeIndex.namespace(userId.toString()).query({
             vector: queryEmbedding,
@@ -1582,6 +1587,8 @@ const messageWorker = new Worker(
             - You are starting a conversation on your own.
             - Be natural, slightly random, and human-like.
             - Do NOT act like you are replying.
+            - If u have no details of user don't act like u know the user.
+            - Do NOT act like you know about user u can ask related question but don't make it look like u know about user.
             - Do NOT explain anything.
             - Do NOT be overly enthusiastic every time.
 
@@ -1644,6 +1651,8 @@ const messageWorker = new Worker(
 
         const outputRaw = response.choices[0].message.content.trim();
 
+
+
         let output
 
         try {
@@ -1703,6 +1712,9 @@ const messageWorker = new Worker(
                 await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
             }
         }
+        await emitSocketEvent(userId.toString(), "newMessage", {
+            name: aiName
+        });
     }
   },
   {

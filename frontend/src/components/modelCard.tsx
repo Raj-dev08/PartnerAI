@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
 import { useAiModelStore } from "../store/useChooseAi";
+import { useAuthStore } from "../store/useAuthStore";
 
 export default function ModelCard({ model , user}: any) {
   const { setAIModel, rateAIModel } = useAiModelStore();
+  const { checkAuth } = useAuthStore()
 
   const isEligible =
     model.eligibleRater?.includes(user?._id) ; //anyone can rate for now as its not the top priority
@@ -54,12 +56,10 @@ export default function ModelCard({ model , user}: any) {
         <div className="mt-4 flex gap-2 justify-between">
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => {
-              let suc = setAIModel(model._id)
+            onClick={async() => {
+              let suc = await setAIModel(model._id)
               if(!suc) return
-              setTimeout(() => {
-                window.location.reload();
-              }, 500); // delay in ms
+              await checkAuth()
             }}
             className="flex-1 py-2 text-sm bg-white text-black rounded-lg font-medium hover:bg-neutral-200 transition"
           >
