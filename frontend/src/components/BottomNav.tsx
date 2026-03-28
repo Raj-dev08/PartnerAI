@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useAiModelStore } from "../store/useChooseAi";
+import { useChatStore } from "../store/useChatStore";
 
 export default function BottomNav() {
   const { user } = useAuthStore();
+  const { seeBadge , setBadgeToFalse} = useChatStore()
   const { firstAIModel, switchAIModel } = useAiModelStore();
   const location = useLocation();
 
@@ -56,6 +58,8 @@ export default function BottomNav() {
             label="Chat"
             icon={<MessageCircle size={20} />}
             active={isActive("/chat")}
+            showBadge={seeBadge}
+            onClick={setBadgeToFalse}
           />
         ) : (
           <ActionItem
@@ -143,18 +147,29 @@ function NavItem({
   label,
   icon,
   active,
+  showBadge,
+  onClick,
 }: {
   to: string;
   label: string;
   icon: React.ReactNode;
   active?: string;
+  showBadge?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <Link
       to={to}
+      onClick={onClick}
       className={`flex flex-col items-center justify-center flex-1 py-2 text-[11px] transition ${active}`}
     >
-      <div className="mb-0.5">{icon}</div>
+      <div className="mb-0.5 relative">
+        {icon}
+
+        {showBadge && (
+          <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full" />
+        )}
+      </div>
       <span className="tracking-tight">{label}</span>
     </Link>
   );

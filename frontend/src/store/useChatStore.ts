@@ -21,11 +21,16 @@ type ChatState = {
   loading: boolean;
   sending: boolean;
   typingAi: string | null;
+  seeBadge: boolean;
+
 
   getMessages: (aiId: string, before?: string | Date) => Promise<void>;
   sendMessage: (content: string, aiId: string, replyingTo?: string) => Promise<void>;
+  setBadgeToFalse: () => void;
+
 
   subscribeToSocket: () => void;
+  subscribeToSocketForNotification: () => void;
 };
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -34,6 +39,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loading: false,
   sending: false,
   typingAi: null,
+  seeBadge: false,
+
+  setBadgeToFalse: () => {
+    set({seeBadge: false})
+  },
 
 
   getMessages: async (aiId, before) => {
@@ -121,5 +131,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
+  },
+
+
+  subscribeToSocketForNotification: () => {
+    const { socket } = useAuthStore.getState();
+    if (!socket) return;
+
+    socket.off("newMessage");
+
+
+    socket.on("newMessage", (data : any) =>{
+      const currentPath = window.location.pathname;
+
+      if (currentPath !== "/chat") {
+        toast.success(`${data.name} sent you a message!`);
+        set({ seeBadge: true });
+      }
+    })
   }
 }));

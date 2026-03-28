@@ -1,7 +1,8 @@
 import AiModel from "../model/ai.model.js";
 import { dbQueues } from "../lib/db.queue.js";
 import { pineconeIndex } from "../lib/pinecone.js";
-
+import PastExperience from "../model/past.model.js";
+import Interest from "../model/interest.model.js";
 
 export const generateAiModel = async (req, res, next) => {
     try {
@@ -280,7 +281,7 @@ export const getAiModelsCreatedByMe = async (req, res, next) => {
             return res.status(400).json({ message: "User is disabled" });
         }
 
-        const aiModels = await AiModel.find({ madeBy: user._id });
+        const aiModels = await AiModel.find({ madeBy: user._id })
 
         if (!aiModels || aiModels.length === 0) {
             return res.status(200).json({ message: "No AI models made by you" });
@@ -309,6 +310,8 @@ export const getAiModelById = async (req, res, next) => {
         }
 
         const aiModel = await AiModel.findById(id)
+                        .populate("pastExperiences")
+                        .populate("interests");
 
         if (!aiModel){
             return res.status(404).json({ message: "AI model not found" });

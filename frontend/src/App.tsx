@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { axiosInstance } from "./lib/axios"
 
 import { useAuthStore } from "./store/useAuthStore"
+import { useChatStore } from "./store/useChatStore"
 
 import SignupPage from "./pages/signup"
 import LoginPage from "./pages/login"
@@ -25,6 +26,7 @@ import axios from "axios"
 function App() {
   const { isCheckingAuth, user , checkAuth } = useAuthStore()
   const [isBackendReady, setIsBackendReady] = useState(false);
+  const { subscribeToSocketForNotification } = useChatStore()
 
   const checkBackend = async () => {
     try {
@@ -44,6 +46,7 @@ function App() {
   useEffect(() => {
     if(isBackendReady){
       checkAuth()
+      subscribeToSocketForNotification()
     }
    
   }, [isBackendReady])

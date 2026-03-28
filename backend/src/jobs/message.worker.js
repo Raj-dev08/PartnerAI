@@ -924,6 +924,10 @@ const messageWorker = new Worker(
                 message: newMessage
             });
 
+            await emitSocketEvent(userId.toString(), "newMessage", {
+                name: aiName
+            });
+
             if (user.expoToken){
                 await sendNotificationToExpo(user.expoToken, { title: aiName , body: msg })
             }
@@ -1015,7 +1019,19 @@ const messageWorker = new Worker(
             message,
             userId,
             recentMessages: previousMessages
-        })        
+        })  
+        
+        await dbQueues.add("startNewConvo",{
+            messageId: lastMessageId,
+            userId,
+        },{
+            delay: 2 * 60 * 60 * 1000 + ( Math.random() * 10 ) * 60 * 60 * 1000,
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 1000
+            }
+        })
     }
     else if (job.name === "startNewConvo"){
         const { userId, messageId } = job.data;
@@ -1294,44 +1310,50 @@ const messageWorker = new Worker(
 
 
         const prompt = `
-            You are rating a conversation between a user and an AI.
+                You are a strict scoring function.
 
-            AI Personality:
-            Coldness: ${aiModel.personalityTraits.coldness}
-            Kindness: ${aiModel.personalityTraits.kindness}
-            Sweetness: ${aiModel.personalityTraits.sweetness}
-            Humour: ${aiModel.personalityTraits.humour}
-            Expressiveness: ${aiModel.expressiveness}
-            Talkativeness: ${aiModel.talkativeness}
-            Trust Building Rate: ${aiModel.trustBuildingRate}
+                Your job is to return ONLY a single number.
 
+                OUTPUT FORMAT RULES (CRITICAL):
+                - Output ONLY a single number
+                - No text, no explanation, no brackets, no labels
+                - Example valid outputs: 1.2, -0.5, 0, 2, -2
+                - If you output anything else, the result is invalid
 
-            Input:
-            The slice of conversation 
+                TASK:
+                Given a conversation between a user and an AI, return a closeness delta score.
 
-            Task:
-            Return how this conversation should affect closeness.
+                RANGE:
+                - Minimum: -2.0
+                - Maximum: 2.0
 
-            Rules:
-            • Output ONLY a number
-            • Range: -2.0 to +2.0
-            • Decimals allowed (e.g. 0.5, -1.2)
-            • Positive = user engaged, interested, warm
-            • Negative = dry, uninterested, disengaged
-            • 0 = neutral
+                MEANING:
+                - Positive → user engaged, interested, warm
+                - Negative → dry, disengaged, uninterested
+                - 0 → neutral
 
-            Guidelines:
-            • If user replies fast and engages → positive
-            • If user gives short/dry replies → negative
-            • If AI personality is cold → smaller positive gains
-            • If AI personality is warm → larger positive gains
+                SCORING LOGIC:
+                - Fast replies + effort + emotional engagement → positive
+                - Short, dry, uninterested replies → negative
+                - AI personality affects scaling:
+                - Cold AI → reduce positive scores
+                - Warm AI → increase positive scores
 
-            Examples:
-            1.5
-            0.3
-            -0.7
-            -1.8
-            `;
+                IMPORTANT:
+                Return ONLY the number. No explanation under any condition.
+
+                AI Personality:
+                Coldness: ${aiModel.personalityTraits.coldness}
+                Kindness: ${aiModel.personalityTraits.kindness}
+                Sweetness: ${aiModel.personalityTraits.sweetness}
+                Humour: ${aiModel.personalityTraits.humour}
+                Expressiveness: ${aiModel.expressiveness}
+                Talkativeness: ${aiModel.talkativeness}
+                Trust Building Rate: ${aiModel.trustBuildingRate}
+                
+                Use this personality to rate the conversation , 
+                rate lower if the persona is reserved and the conversation is dry
+                `;
 
         const output = await openai.chat.completions.create({
             model: "meta/llama3-8b-instruct",
@@ -1342,16 +1364,18 @@ const messageWorker = new Worker(
                 },
                 {
                     role: "user",
-                    content: `Conversation: ${convoText} rate the conversation between user and AI`
+                    content: `Rate this conversation:\n${convoText}\n\nReturn ONLY the number.`
                 }
             ]
         });
 
         const outputRaw = output.choices[0].message.content.trim()
 
-        let delta = parseFloat(outputRaw)
+        const match = outputRaw.match(/-?\d+(\.\d+)?/)
+        let delta = match ? parseFloat(match[0]) : 1
 
-        if (isNaN(delta)) return;
+        console.log(delta,outputRaw)
+
 
         delta = Math.max(-2, Math.min(2, delta))
 
@@ -1365,6 +1389,8 @@ const messageWorker = new Worker(
         user.AiModelCloseness = Math.max(0, Math.min(10, user.AiModelCloseness + delta))
 
         await user.save();
+
+        console.log(user)
 
     }
     else if (job.name === "updateUserReference"){
@@ -1413,6 +1439,9 @@ const messageWorker = new Worker(
 
         const user = await User.findById(userId);
 
+       
+
+
         if(!user){
             console.log("user doesnt exist")
             return;
@@ -1426,6 +1455,7 @@ const messageWorker = new Worker(
             return;
         }
 
+        
         const lastMessageSentByUser = await Message.findOne({
             userId,
         }).sort({ createdAt: -1 });
@@ -1449,6 +1479,11 @@ const messageWorker = new Worker(
                 return
             }
         }
+
+        await emitSocketEvent(userId.toString(), "aiStartedTyping", {
+            aiId:user.AiModel.toString()
+        })
+
 
         const aiGender  = `${user.gender == `other` ? `other` : user.gender == 'male' ? 'female' : 'male'}`
 
@@ -1638,6 +1673,10 @@ const messageWorker = new Worker(
             $push: { conversations: newConvo._id }
         }
         )
+
+        await emitSocketEvent(userId.toString(), "aiStoppedTyping", {
+            aiId:user.AiModel.toString()
+        })
 
         for ( const msg of output){
             const newMessage = await Message.create({

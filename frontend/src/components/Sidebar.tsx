@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useAiModelStore } from "../store/useChooseAi";
+import { useChatStore } from "../store/useChatStore";
 import { Link, useLocation } from "react-router-dom";
 import {
   Home,
@@ -11,13 +12,14 @@ import {
 } from "lucide-react";
 
 export default function Sidebar() {
-  const { user , checkAuth } = useAuthStore();
+  const { user, checkAuth } = useAuthStore();
   const { firstAIModel, switchAIModel } = useAiModelStore();
+  const { seeBadge, setBadgeToFalse } = useChatStore();
   const location = useLocation();
 
-  useEffect(()=>{
+  useEffect(() => {
     checkAuth();
-  },[])
+  }, []);
 
   const [showRandom, setShowRandom] = useState(false);
   const [randomScope, setRandomScope] = useState<"verified" | "all">("verified");
@@ -30,7 +32,7 @@ export default function Sidebar() {
   return (
     <>
       <div className="hidden md:flex w-64 h-screen border-r border-neutral-900 flex-col justify-between px-5 py-6 bg-neutral-950">
-
+        
         {/* TOP */}
         <div className="space-y-8">
 
@@ -70,7 +72,8 @@ export default function Sidebar() {
                 label="Chat"
                 icon={<MessageCircle size={18} />}
                 active={isActive("/chat")}
-                highlight
+                showBadge={location.pathname !== "/chat" && seeBadge}
+                onClick={setBadgeToFalse}
               />
             ) : (
               <button
@@ -125,17 +128,17 @@ export default function Sidebar() {
 
                   <button
                     onClick={async () => {
-                      let suc = false
+                      let suc = false;
                       if (randomScope === "verified") {
                         suc = await firstAIModel();
                       } else {
                         suc = await switchAIModel();
                       }
-                      if(!suc) return
+                      if (!suc) return;
                       setShowRandom(false);
                       setTimeout(() => {
                         window.location.reload();
-                      }, 500); // delay in ms
+                      }, 500);
                     }}
                     className="w-full text-xs bg-neutral-700 py-1.5 rounded-md active:scale-95"
                   >
@@ -178,25 +181,33 @@ function NavItem({
   icon,
   active,
   highlight,
+  showBadge,
+  onClick,
 }: {
   to: string;
   label: string;
   icon: React.ReactNode;
   active?: string;
   highlight?: boolean;
+  showBadge?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <Link
       to={to}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition ${
-        highlight
-          ? "text-white"
-          : active
+      onClick={onClick}
+      className={`relative flex items-center gap-3 px-3 py-2 rounded-lg transition ${
+        highlight ? "text-white" : active
       }`}
     >
-      <div className={`${highlight ? "scale-105" : ""}`}>
+      <div className={`relative ${highlight ? "scale-105" : ""}`}>
         {icon}
+
+        {showBadge && (
+          <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+        )}
       </div>
+
       <span className="text-sm tracking-tight">{label}</span>
     </Link>
   );

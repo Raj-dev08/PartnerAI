@@ -38,6 +38,8 @@ type AiModel = {
   talkativeness: number;
   trustBuildingRate: number;
   madeBy: string;
+  interests?: any | null | string,
+  pastExperiences? : any | null | string,
 };
 
 type InterestPayload = {
@@ -60,6 +62,8 @@ type AiBuilderState = {
   myCreatedAi: AiModel[]| [];
   updatingModel: AiModel | null;
   loading: boolean;
+  isAddingExperience: boolean;
+
 
   createAiModel: (data: any) => Promise<boolean>;
   updateAiModel: (id: string, data: any) => Promise<boolean>;
@@ -74,6 +78,8 @@ export const useAiBuilderStore = create<AiBuilderState>((set,get) => ({
   myCreatedAi: [],
   loading: false,
   updatingModel: null,
+  isAddingExperience: false,
+
 
 
   createAiModel: async (data) => {
@@ -178,7 +184,7 @@ export const useAiBuilderStore = create<AiBuilderState>((set,get) => ({
   },
 
   createInterest: async (data: InterestPayload) => {
-    set({ loading: true });
+    set({ isAddingExperience: true });
     try {
       await axiosInstance.post("/interest/create", data);
 
@@ -192,12 +198,12 @@ export const useAiBuilderStore = create<AiBuilderState>((set,get) => ({
       );
       return false;
     } finally {
-      set({ loading: false });
+      set({ isAddingExperience: false });
     }
   },
 
   createPastExperience: async (data: ExperiencePayload) => {
-    set({ loading: true });
+    set({ isAddingExperience: true });
     try {
       await axiosInstance.post("/experience/create", data);
 
@@ -211,7 +217,7 @@ export const useAiBuilderStore = create<AiBuilderState>((set,get) => ({
       );
       return false;
     } finally {
-      set({ loading: false });
+      set({ isAddingExperience: false });
     }
   },
   

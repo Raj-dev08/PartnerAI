@@ -10,7 +10,7 @@ export default function UpdateAiPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { updatingModel, getAiModelByID, updateAiModel, loading , createInterest , createPastExperience} =
+  const { isAddingExperience , updatingModel, getAiModelByID, updateAiModel, loading , createInterest , createPastExperience} =
     useAiBuilderStore();
 
   const [form, setForm] = useState<any>(null);
@@ -18,6 +18,10 @@ export default function UpdateAiPage() {
 
   const [showInterest, setShowInterest] = useState(false);
   const [showExperience, setShowExperience] = useState(false);
+
+  const [showExistingExperiences, setShowExistingExperiences] = useState(false);
+
+  const [showExistingInterests, setShowExistingInterests] = useState(false);
 
   const [interestForm, setInterestForm] = useState({
     interest: "",
@@ -349,17 +353,36 @@ export default function UpdateAiPage() {
         </div>
 
         <div className="flex gap-3">
-          <button
-          onClick={() => setShowExperience(true)}
-            className="flex-1 py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900">
-            + Add Memory
-          </button>
-
+          <div className="flex-1 space-y-3">
+            <button
+              onClick={() => setShowExperience(true)}
+                className="w-full py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900">
+                + Add Memory
+              </button>
+              <button
+                onClick={() => setShowExistingExperiences((prev) => !prev)}
+                className="w-full py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900"
+              >
+                {showExistingExperiences ? "Hide Memories" : "Show Memories"}
+              </button>
+          </div>
+          
+          
+        <div className="flex-1 space-y-3">
           <button 
-          onClick={() => setShowInterest(true)}
-          className="flex-1 py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900">
-            + Add Interest
-          </button>
+            onClick={() => setShowInterest(true)}
+            className="w-full py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900">
+              + Add Interest
+            </button>
+
+            <button
+              onClick={() => setShowExistingInterests((prev) => !prev)}
+              className="w-full py-2 rounded-lg border border-neutral-700 text-sm hover:bg-neutral-900"
+            >
+              {showExistingExperiences ? "Hide Interests" : "Show Interests"}
+            </button>
+        </div>
+          
         </div>
 
         {/* UPDATE BUTTON */}
@@ -451,9 +474,10 @@ export default function UpdateAiPage() {
 
             <button
               onClick={handleAddInterest}
+              disabled={isAddingExperience}
               className="w-full mt-4 py-2 bg-white text-black rounded-lg"
             >
-              Save
+              {isAddingExperience? "Saving..." : "Save"}
             </button>
           </Modal>
         )}
@@ -509,12 +533,74 @@ export default function UpdateAiPage() {
 
             <button
               onClick={handleAddExperience}
+              disabled={isAddingExperience}
               className="w-full mt-4 py-2 bg-white text-black rounded-lg"
             >
-              Save
+              {isAddingExperience ? "Saving..." : "Save"}
             </button>
           </Modal>
         )}
+
+        {showExistingExperiences && (
+        <div className="space-y-3 font-body">
+          Memories:
+          {updatingModel?.pastExperiences?.length > 0 ? (
+            updatingModel?.pastExperiences.map((exp: any, i: number) => (
+              <div
+                key={i}
+                className="p-3 mt-2 rounded-lg border border-neutral-800 bg-neutral-900"
+              >
+                <p className="text-sm font-medium">{exp.event}</p>
+                <p className="text-xs text-neutral-400">
+                  {exp.description}
+                </p>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Age: {exp.ageDuringEvent}
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-neutral-500">
+              No memories added yet
+            </p>
+          )}
+        </div>
+      )}
+
+      {showExistingInterests && (
+        <div className="space-y-3 font-body">
+          Interests:
+          {updatingModel?.interests?.length > 0 ? (
+            updatingModel?.interests.map((exp: any, i: number) => (
+              <div
+                key={i}
+                className="p-3 mt-2 rounded-lg border border-neutral-800 bg-neutral-900"
+              >
+                <p className="text-sm font-medium">{exp.interest}</p>
+                <p className="text-xs text-neutral-400">
+                  {exp.description}
+                </p>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Age: {exp.ageWhileInterest}
+                </p>
+
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Reason: {exp.reasonForInterest}
+                </p>
+
+                { exp?.acheivments?.length > 0  &&<p className="text-[10px] text-neutral-500 mt-1">
+                  Achievents: {exp.acheivements?.join(", ")}
+                </p>
+                } 
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-neutral-500">
+              No memories added yet
+            </p>
+          )}
+        </div>
+      )}
 
       </div>
     </div>
