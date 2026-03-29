@@ -43,7 +43,7 @@ export const firstAIModel = async(req,res,next) => {
         user.AiModel = aiModel._id;
 
         user.aiMemory = null;
-
+        user.conversations = []
         await user.save();
 
         await UserReference.updateOne(
@@ -61,7 +61,8 @@ export const firstAIModel = async(req,res,next) => {
 
 
         await messageQueue.add("startBrandNewConvo", {
-            userId: user._id // will fetch ai details so it is for user not just for ai
+            userId: user._id, // will fetch ai details so it is for user not just for ai
+            aiId: aiModel._id
         },{
             delay: 1000, // 1s delay for first message then it will be random and dynamic
             attempts: 3,
@@ -129,6 +130,7 @@ export const switchAIModel = async(req,res,next) => {
 
         user.AiModel = aiModel._id;
         user.AiModelCloseness = 0;
+        user.conversations = []
         await user.save();
 
         await UserReference.updateOne(
@@ -144,7 +146,8 @@ export const switchAIModel = async(req,res,next) => {
         );
        
         await messageQueue.add("startBrandNewConvo", {
-            userId: user._id // will fetch ai details so it is for user not just for ai
+            userId: user._id, // will fetch ai details so it is for user not just for ai
+            aiId: aiModel._id
         },{
             delay: 1000, // 1s delay for first message then it will be random and dynamic
             attempts: 3,
@@ -298,6 +301,7 @@ export const setAIModel = async(req,res,next) => {
             aiId: user.AiModel
         })
 
+
         if ( user.AiModel && user.aiMemory){
             user.aiMemory = null;
 
@@ -309,7 +313,7 @@ export const setAIModel = async(req,res,next) => {
         
 
         user.AiModel = aiModel._id;
-    
+        user.conversations = []
         await user.save();
 
         await UserReference.updateOne(
@@ -325,7 +329,8 @@ export const setAIModel = async(req,res,next) => {
         );
 
         await messageQueue.add("startBrandNewConvo", {
-            userId: user._id // will fetch ai details so it is for user not just for ai
+            userId: user._id, // will fetch ai details so it is for user not just for ai
+            aiId: aiModel._id
         },{
             delay: 1000, // 1s delay for first message then it will be random and dynamic
             attempts: 3,

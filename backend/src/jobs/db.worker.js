@@ -470,6 +470,86 @@ const dbWorker = new Worker("db-queue", async (job) => {
             }
 
         }
+
+        else if (job.name === "updateShortTermMemory"){ //BAD PRACTICE FIX SO ITS ON CALL NOT RAW MESSAGES
+            const { shortTermMemory , message, history, redisKey } = job.data;
+            const updateMemoryPrompt = ` 
+                                    You are a Short-Term Memory Update Engine.
+    
+                                    Your job is to update the AI's short term memory using the latest conversation.
+    
+                                    INPUTS YOU RECEIVE
+                                    1. Existing Short Term Memory
+                                    2. New Message
+                                    3. Recent Conversation
+    
+                                    NOTES:
+                                    1. Short Term Memory can be empty
+                                    2. Recent Conversations might be empty 
+                                    3. Update memory based on new message if needed
+                                    4. Send the same short term memory if there is no need to change anything
+                                
+    
+                                    TASK
+                                    Update the memory by:
+                                    • Keeping all important existing memory.
+                                    • Adding new useful details from the recent conversation.
+                                    • Updating facts if the new conversation contradicts old memory.
+                                    • Removing trivial or irrelevant details.
+                                    • Compressing redundant information.
+    
+                                    RULES
+                                    • Maintain a concise but information-dense summary.
+                                    • Focus on facts about the user, their preferences, opinions, mood, activities, and ongoing topics.
+                                    • Preserve useful context that helps future conversation continuity.
+                                    • Do NOT invent information.
+                                    • Do NOT add explanations.
+                                    • Do NOT repeat the instructions.
+                                    • Do NOT output anything except the updated memory.
+                                    • Maximum memory length: 120 words.
+                                    • If memory grows too large, compress older details while preserving key facts.
+                                    • If the message contains no new meaningful information about the user, return the existing memory unchanged.
+                                    STYLE
+                                    Write memory as clear bullet-like statements or short paragraphs.
+    
+                                    GOOD MEMORY EXAMPLES
+                                    User likes late night conversations.
+                                    User enjoys discussing programming and AI projects.
+                                    User dislikes overly formal responses.
+                                    User is currently building an AI companion app.
+    
+                                    IMPORTANT
+                                    Return ONLY the updated short term memory text.
+                                    No markdown.
+                                    No explanations.
+                                    No labels.
+                                    No JSON.
+            `
+    
+            const updatedMemoryResponse = await openai.chat.completions.create({
+                model: "meta/llama3-70b-instruct",
+                messages: [
+                    {
+                        role: "system",
+                        content: updateMemoryPrompt
+                    },
+                    {
+                        role: "user",
+                        content: `
+                        Short Term Memory: ${shortTermMemory || "None"} 
+                        New Message: ${message.message} 
+                        ${message.replyingTo? `Replied to ${message.replyingTo.sentBy} : ${message.replyingTo.message}` : ``}
+                        Previous Messages: ${history || "None"} 
+                        `
+                    }
+                ]
+            });
+    
+            const updatedMemory = updatedMemoryResponse.choices[0].message.content
+    
+            await redis.set(redisKey, updatedMemory, "EX", 30 * 60) //remember for 30 mins of inactivity
+    
+        }
             
     } catch (error) {
         console.error(error);
