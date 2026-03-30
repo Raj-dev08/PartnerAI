@@ -153,7 +153,7 @@ export default function CreateAiPage() {
         academicBackgroundWeightage: Number(form.academicBackgroundWeightage),
         speechPatterns: {
           ...form.speechPatterns,
-          catchphrases: form.speechPatterns.catchphrases.split(",")
+          catchPhrases: form.speechPatterns.catchphrases.split(",")
         }
     }
     if(!validate()) return;
