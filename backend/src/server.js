@@ -56,6 +56,10 @@ app.get("/api/health", (req, res) => {
   return res.status(200).json({ message: "OK" })
 })
 
+app.head("/health",(req,res) => {
+  res.status(200).send("OK");
+})
+
 
 app.use(errorHandler)
 
