@@ -421,6 +421,14 @@ const messageWorker = new Worker(
 
         //IGNORE MECHANICS TILL NOW
 
+        const msgLockKey = `msg-lock:${user._id}`; // Lock the message for a certain time so message spam gets blocked
+
+        const isLocked = await redis.set(msgLockKey, "1", "NX", "EX", 10); // Lock for 10 seconds
+
+        if(!isLocked){
+            return
+        }
+
         const aiModel = await AiModel.findById(user.AiModel);
 
         if(!aiModel){

@@ -157,7 +157,7 @@ export const generateAiModel = async (req, res, next) => {
             expressiveness,
             talkativeness,
             trustBuildingRate,
-            isVerified: user.isOwner,
+            isVerified: user.isPaid || user.isOwner, //for better trust and more usage needs to pay
             madeBy: user._id
         });
 

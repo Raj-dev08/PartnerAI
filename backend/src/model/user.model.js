@@ -32,9 +32,13 @@ const userSchema = new mongoose.Schema(
             type:Boolean,
             default:false,
         },
-        isPaid: { // kinda not needed in begining later redis store fall back 
+        isPaid: { //Uses this to make verified models ( just dummy payment for now)
             type: Boolean,
             default: false,
+        },
+        subscription: { //POSTGRESQL subscription id
+            type: String,
+            default: ""
         },
         memories: [
             {
