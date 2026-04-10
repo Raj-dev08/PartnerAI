@@ -426,6 +426,7 @@ const messageWorker = new Worker(
         const isLocked = await redis.set(msgLockKey, "1", "NX", "EX", 10); // Lock for 10 seconds
 
         if(!isLocked){
+            console.log("skipped back to back msgs")
             return
         }
 
@@ -441,6 +442,8 @@ const messageWorker = new Worker(
         await emitSocketEvent(userId.toString(), "aiStartedTyping", {
             aiId:aiModel._id.toString()
         })
+
+        console.log(result)
 
         
         let pastExperiences;
@@ -556,6 +559,36 @@ const messageWorker = new Worker(
 
         }
 
+        let rawMemoryText = `
+            Current message: ${message.message}
+
+            ${allPastExp ? `Past Experiences:
+                ${allPastExp.map(e => `
+                    Event: ${e.event}
+                    Description: ${e.description}
+                    Age: ${e.ageDuringEvent}`).join("\n\n")}` 
+            : ``}
+
+            ${allInterest ? `Interests:
+                ${allInterest.map(i => `
+                    Interest: ${i.interest}
+                    Description: ${i.description}
+                    ReasonForInterest: ${i.reasonForInterest}
+                    Achievements: ${i.acheivements}
+                    Age: ${i.ageWhileInterest}`).join("\n\n")}` 
+            : ``}
+
+            ${allUserMemory ? `User Memory:
+                ${allUserMemory.map(m => `
+                    Title: ${m.title}
+                    Description: ${m.description}
+                    MessageReference: ${m.messageReference}`).join("\n\n")}` 
+            : ``}
+
+            ${allAiMemory ? `Ai Memory:
+            ${allAiMemory.memory}` : ``}
+            `;
+
         const memoryCompressor = `
             You are a memory compressor.
 
@@ -586,11 +619,15 @@ const messageWorker = new Worker(
             Only return bullets. No explanations.
             `
 
-        let summarizedText = ""
-        if ( tellAllInterest ==="yes" 
+        const MAX_LENGTH = 4000; // tune this (3k–6k range is good)
+
+        let summarizedText = "";
+        if ( rawMemoryText.length > MAX_LENGTH && (
+            tellAllInterest ==="yes" 
             || tellAllPast === "yes" 
             || searchAllUserMemory === "yes"
             || searchAIMemory === "yes"
+        )
         ){
             allPastExp = allPastExp?.slice(-20);
             allInterest = allInterest?.slice(-20);
@@ -598,7 +635,7 @@ const messageWorker = new Worker(
             
             try {
                 const memResult = await openai.chat.completions.create({
-                model: "meta/llama3-70b-instruct",
+                model: "meta/llama-3.1-8b-instruct",
                     messages: [
                         {
                             role: "system",
@@ -646,6 +683,9 @@ const messageWorker = new Worker(
             }
             
         }
+        else {
+            summarizedText = rawMemoryText
+        }
         
 
         const pastExperienceMemories = (pastExperiences?.matches || [])
@@ -663,7 +703,7 @@ const messageWorker = new Worker(
             .slice(0, 3)
             .map(m => m.metadata);
 
-
+        // console.log("searched and summed up stuff ",summarizedText)
 
         const ragContext = `
             RELEVANT MEMORIES
@@ -958,10 +998,6 @@ const messageWorker = new Worker(
             message
         })
 
-        await dbQueues.add("createAiMemory",{
-            messageId: lastMessageId,
-            userId,
-        })
         await dbQueues.add("createUserMemory", {
             message,
             userId,

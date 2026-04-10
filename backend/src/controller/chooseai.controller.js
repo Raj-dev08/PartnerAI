@@ -33,16 +33,24 @@ export const firstAIModel = async(req,res,next) => {
             aiModel.eligibleRater.push(user._id);
             await aiModel.save();
         }
-        if(user.AiModel){
-            await aiMemory.deleteOne({
-                userId: user._id,
-                aiId: user.AiModel
-            })
-        }
+        const newAIMemory = await aiMemory.findOneAndUpdate(
+            { userId: user._id },
+            {
+                $set: {
+                    aiId: aiModel._id,
+                    memory: ""
+                }
+            },
+            {
+                new: true,
+                upsert: true
+            }
+        );
 
+        user.aiMemory = newAIMemory._id;
         user.AiModel = aiModel._id;
 
-        user.aiMemory = null;
+        
         user.conversations = []
         await user.save();
 
@@ -118,17 +126,23 @@ export const switchAIModel = async(req,res,next) => {
         })
 
 
-        if ( user.AiModel && user.aiMemory){
-            user.aiMemory = null;
-        
-            await aiMemory.deleteOne({
-                userId: user._id,
-                aiId: user.AiModel
-            })
-        }
+        const newAIMemory = await aiMemory.findOneAndUpdate(
+            { userId: user._id },
+            {
+                $set: {
+                    aiId: aiModel._id,
+                    memory: ""
+                }
+            },
+            {
+                new: true,
+                upsert: true
+            }
+        );
        
 
         user.AiModel = aiModel._id;
+        user.aiMemory = newAIMemory._id
         user.AiModelCloseness = 0;
         user.conversations = []
         await user.save();
@@ -197,9 +211,8 @@ export const removeAIModel = async(req,res,next) => {
         })
 
         user.aiMemory = null;
-        await aiMemory.deleteOne({
+        await aiMemory.deleteOne({ // only one memory per user so its fine  
             userId: user._id,
-            aiId: user.AiModel
         })
 
         user.AiModel = null;
@@ -302,16 +315,22 @@ export const setAIModel = async(req,res,next) => {
         })
 
 
-        if ( user.AiModel && user.aiMemory){
-            user.aiMemory = null;
-
-            await aiMemory.deleteOne({
-                userId: user._id,
-                aiId: user.AiModel
-            })
-        }   
+        const newAIMemory = await aiMemory.findOneAndUpdate(
+            { userId: user._id },
+            {
+                $set: {
+                    aiId: aiModel._id,
+                    memory: ""
+                }
+            },
+            {
+                new: true,
+                upsert: true
+            }
+        );
+       
         
-
+        user.aiMemory = newAIMemory._id
         user.AiModel = aiModel._id;
         user.conversations = []
         await user.save();
@@ -569,7 +588,7 @@ export const reccomendedAIModel = async (req, res, next) => {
 
         const filteredIds = ids.filter(id => !usedIds.has(id));
 
-        const paginatedIds = filteredIds.slice((page - 1 ), (page -1 )*limit + limit);
+        const paginatedIds = filteredIds.slice((page - 1 ) * limit , (page -1 )*limit + limit);
 
       
         let models = await AiModel.find({

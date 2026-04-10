@@ -14,13 +14,15 @@ const aimemorySchema = new mongoose.Schema(
         },
         memory:{
             type: String,
-            required: true,
+            default:"",
             maxLength: 10000
         }
     }, {
         timestamps: true
     }
 )
+
+aimemorySchema.index({ userId: 1}, { unique: true });
 
 const aiMemory = mongoose.model("AiMemory", aimemorySchema);
 

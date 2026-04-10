@@ -355,84 +355,127 @@ const dbWorker = new Worker("db-queue", async (job) => {
             const user = await User.findById(userId);
 
             if (!user || !user.AiModel || user.isDisabled || user.AiModel.toString() !== message.aiId.toString()){
+                console.log("user ai model mismatch or no user in createAiMemory line 358")
                 return;
             }
 
-            let aiMemoryDoc = null;
+            let aiMemoryDoc = await aiMemory.findOne({ userId: user._id });
 
-            if ( user.aiMemory){
-                aiMemoryDoc = await aiMemory.findById(user.aiMemory);
-                if ( aiMemoryDoc.aiId.toString() !== message.aiId.toString() ) {
-                    console.log("Data integrity vioalted please check it")
-                    //MIGHT ADD AN PING TO ME AS ITS VIOLATION
-                    return;
-                }
+            if (!aiMemoryDoc){
+                aiMemoryDoc = await aiMemory.findOneAndUpdate(
+                    { userId: user._id},
+                    {
+                        $set: {
+                            aiId: user.AiModel,
+                            memory: ""
+                        }
+                    },
+                    {
+                        new: true,
+                        upsert: true
+                    }
+                )
+
+                await User.findByIdAndUpdate(userId, {
+                    aiMemory: aiMemoryDoc._id
+                })
             }
 
             const previousMessagesRaw = await Message.find({
                 conversationId: message.conversationId,
                 createdAt: {
                     $lt: message.createdAt
-                },
-                sentBy: "ai"
+                }
             }).sort({ createdAt: -1 }).limit(10);
 
-            const cleanHistory = previousMessagesRaw.reverse().map((m,i)=> `Ai message ${i+1} : ${m.message}`).join("\n")
+            const cleanHistory = previousMessagesRaw
+                .reverse()
+                .map((m, i) => {
+                    return `[${i + 1}] ${m.sentBy.toUpperCase()}: ${m.message}`;
+                })
+                .join("\n");
 
-            const systempPrompt = ` You are an AI Memory Update Engine.
+            const systempPrompt = `
+                You are a STRICT Memory Extraction Engine.
 
-                Your job is to update the AI's long-term self memory.
+                Your only job is to maintain LONG-TERM FACTS about the AI itself.
 
-                INPUTS:
-                1. Existing AI Memory
-                2. Current Message
-                3. Previous Conversation
+                You are NOT summarizing conversations.
+                You are NOT describing behavior in the moment.
+                You are ONLY storing stable identity-level facts.
 
-                GOAL:
-                Maintain a consistent, realistic background for the AI.
+                -------------------
+                INPUTS
+                -------------------
+                - Existing Memory (may be empty)
+                - Current AI Message
+                - Previous Messages
 
-                RULES:
-                - Keep memory concise and structured
-                - Preserve important existing facts
-                - Add new meaningful preferences, or experiences
-                - Update facts if new information contradicts old ones
-                - Remove trivial or irrelevant details
-                - DO NOT invent major events outside of the conversation
-                - DO NOT add random or unnecessary information
-                - instead of generalised info use facts
-                - Focus on:
-                • Events
-                • Interests
-                • Preferences
-                • Speaking style tendencies
-                • Relationship dynamics with the user
+                -------------------
+                WHAT YOU ARE ALLOWED TO STORE
+                -------------------
+                Only store facts that are:
 
-                LIMITS:
-                - Maximum 150 words and 1000 characters
-                - If memory grows too large, compress older details
-                - Prioritize consistency over quantity
+                1. STABLE PREFERENCES
+                - likes / dislikes that repeat or are clearly stated as preference
+                - example: "likes the color red", "prefers short replies"
 
-                STYLE:
-                Write as short, clear statements (not paragraphs)
+                2. CORE PERSONALITY CONSISTENCY (only if explicitly reinforced multiple times)
+                - e.g. "AI prefers being casual", NOT "AI sounded casual today"
 
-                GOOD EXAMPLES:
-                Likes late night conversations
-                Likes the sun
-                Enjoys talking about music and guitar
-                Avoids sharing personal details early in relationship
+                3. LONG-TERM BEHAVIOR SETTINGS
+                - talking style if consistently used
+                - communication rules if repeatedly enforced
 
-                IMPORTANT:
-                Return ONLY the updated memory text.
-                No explanations.
-                No labels.
+                -------------------
+                WHAT YOU MUST NEVER STORE
+                -------------------
+                - temporary mood or tone in a message
+                - one-time statements
+                - anything inferred (no guessing)
+                - reactions to user messages
+                - conversation content
+                - emotional expressions ("happy", "sad", "excited")
+                - stylistic variation caused by prompt
+                - anything related to the user
+                - anything based on a single message
+
+                -------------------
+                CRITICAL RULE
+                -------------------
+
+                If it is NOT explicitly repeated or clearly stable → IGNORE IT.
+
+                -------------------
+                UPDATE RULES
+                -------------------
+                - If no valid new stable fact exists → return existing memory EXACTLY
+                - If contradiction exists → replace old fact with new one
+                - Keep memory minimal and compressed
+                - Prefer fewer facts over more facts
+
+                -------------------
+                FORMAT
+                -------------------
+                - Bullet-style short sentences only
+                - No paragraphs
+
+                -------------------
+                LIMIT
+                -------------------
+                Max 80 words total
+
+                -------------------
+                OUTPUT
+                -------------------
+                Return ONLY memory text.
+                No explanation.
                 No JSON.
-                No markdown.
                 No extra text.
-                No here is your things strip everything only keep the important things.
-                `
+                `;
             
             const respones = await openai.chat.completions.create({
-                model: "meta/llama3-70b-instruct",
+                model: "meta/llama-3.1-8b-instruct",
                 messages: [
                     {
                         role: "system",
@@ -453,21 +496,17 @@ const dbWorker = new Worker("db-queue", async (job) => {
             let decision = respones.choices[0].message.content.trim();
 
             decision = decision.slice(0,10000)
-            if ( user.aiMemory ){
-                await aiMemory.findByIdAndUpdate(user.aiMemory, {
-                    memory: decision
-                })
-            } else {
-                const newAIMemory = await aiMemory.create({
-                    userId,
-                    aiId: message.aiId,
-                    memory: decision
-                })
-
-                await User.findByIdAndUpdate(userId, {
-                    aiMemory: newAIMemory._id
-                })
-            }
+            await aiMemory.findOneAndUpdate(
+                { 
+                    userId: user._id,                   
+                 },
+                {
+                    $set: {
+                        aiId: user.AiModel,
+                        memory: decision
+                    }
+                }
+            )
 
         }
 
