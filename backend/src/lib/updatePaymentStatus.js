@@ -20,10 +20,13 @@ export const updatePaymentStatus = async (userId) => {
             return true;
         }
 
-        const result = await sql.begin(async (tx) => {
+        let result = { isPaid: false };
 
-            const subscription = await tx`
-                SELECT s.* , p.price
+        await sql`BEGIN`;
+
+        try {
+            const subscription = await sql`
+                SELECT s.*, p.price
                 FROM subscriptions s 
                 JOIN plans p ON s.plan_id = p.id
                 WHERE s.id = ${user.subscription} AND s.u_id = ${userId}
@@ -31,32 +34,36 @@ export const updatePaymentStatus = async (userId) => {
             `;
 
             if (!subscription.length) {
-                return { isPaid: false };
+                result = { isPaid: false };
+            } else {
+                const sub = subscription[0];
+
+                // check expiry
+                if (sub.status === 'active' && sub.end_date < new Date()) {
+                    await sql`
+                        UPDATE subscriptions
+                        SET status = 'inactive'
+                        WHERE id = ${sub.id}
+                    `;
+
+                    result = { isPaid: false };
+                } else {
+                    result = { isPaid: sub.status === 'active' };
+                }
             }
 
-            const sub = subscription[0];
+            await sql`COMMIT`;
 
-            // check expiry
-            if (sub.status === 'active' && sub.end_date < new Date()) {
-                await tx`
-                    UPDATE subscriptions
-                    SET status = 'inactive'
-                    WHERE id = ${sub.id}
-                `;
-
-                return { isPaid: false };
-            }
-
-            return { isPaid: sub.status === 'active' };
-        });
+        } catch (err) {
+            await sql`ROLLBACK`;
+            throw err;
+        }
 
         // update mongo AFTER transaction
         await User.updateOne(
             { _id: userId },
             { isPaid: result.isPaid }
         );
-
-
 
         return true;
 
