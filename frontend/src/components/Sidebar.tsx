@@ -9,6 +9,7 @@ import {
   PlusSquare,
   MessageCircle,
   Shuffle,
+  BadgeDollarSign,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -84,6 +85,13 @@ export default function Sidebar() {
                 <span>Random</span>
               </button>
             )}
+
+            {user?.isOwner && <NavItem
+              to="/create-plans"
+              label="Plans"
+              icon={<BadgeDollarSign  size={18} />}
+              active={isActive("/create-plans")}
+            />}
 
             {/* RANDOM MODAL */}
             {showRandom && (

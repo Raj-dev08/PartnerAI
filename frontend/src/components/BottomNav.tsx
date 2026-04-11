@@ -7,6 +7,7 @@ import {
   Shuffle,
   HomeIcon,
   Warehouse,
+  BadgeDollarSign 
 } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useAiModelStore } from "../store/useChooseAi";
@@ -66,6 +67,13 @@ export default function BottomNav() {
             onClick={() => setShowRandom(true)}
           />
         )}
+
+        {user?.isOwner && <NavItem
+          to="/create-plans"
+          label="Plans"
+          icon={<BadgeDollarSign  size={18} />}
+          active={isActive("/create-plans")}
+        />}
 
         <NavItem
           to="/create"

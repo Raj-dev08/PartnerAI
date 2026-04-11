@@ -110,6 +110,44 @@ export default function AccountPage() {
           </div>
         </div>
 
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-neutral-500">Subscription</p>
+              <p className="text-base font-medium">
+                {user?.isPaid ? "Active Plan" : "Free Plan"}
+              </p>
+            </div>
+
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full border ${
+                user?.isPaid
+                  ? "bg-green-500/10 text-green-400 border-green-500/30"
+                  : "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+              }`}
+            >
+              {user?.isPaid ? "Active" : "Free"}
+            </span>
+          </div>
+
+          {/* ACTION BUTTON */}
+          {user?.isPaid ? (
+            <button
+              onClick={() => navigate("/subscription-plans")}
+              className="w-full py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm hover:bg-neutral-700 transition active:scale-[0.98]"
+            >
+              Manage / Renew Subscription
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate("/subscription-plans")}
+              className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200 transition active:scale-[0.98]"
+            >
+              Upgrade to Pro
+            </button>
+          )}
+        </div>
+
         {/* CHANGE PASSWORD */}
         <div className="space-y-3">
           <button

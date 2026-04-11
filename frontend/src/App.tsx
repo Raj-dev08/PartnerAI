@@ -14,6 +14,9 @@ import CreateAiPage from "./pages/createAiPage"
 import MyAiPage from "./pages/myAiModels"
 import UpdateAiPage from "./pages/updateAiPage"
 import ChatPage from "./pages/chatPage"
+import PlansPage from "./pages/plansPage"
+import CreatePlanPage from "./pages/createPlanPage"
+import PaymentPage from "./pages/payPage"
 
 import MainLayout from "./layout/Mainlayout"
 
@@ -78,6 +81,9 @@ function App() {
                 <Route path="/my-ai" element={<MyAiPage />} />
                 <Route path="/ai-model/update/:id" element={<UpdateAiPage />} />
                 <Route path="/chat/" element={<ChatPage />} />
+                <Route path="/subscription-plans" element={<PlansPage />} />
+                <Route path="/create-plans" element={<CreatePlanPage />} />
+                <Route path="/pay/:id" element={<PaymentPage />} />
               </Route>
               <Route path="/signup" element={user? <Navigate to="/"/>:<SignupPage />} />
               <Route path="/login" element={user? <Navigate to="/"/>: <LoginPage />} />
