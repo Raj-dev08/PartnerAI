@@ -259,7 +259,7 @@ export const getUserSubscriptionAndPayment = async (req, res, next) => {
         return res.status(200).json({
             message: "Subscription and payment details retrieved successfully",
             subscription: subscription[0],
-            payment
+            payment: payment[0] // only one payment is there 
         });
     } catch (error) {
         next(error)

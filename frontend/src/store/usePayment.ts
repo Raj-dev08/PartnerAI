@@ -40,7 +40,7 @@ type Payment = {
 type PaymentState = {
   plans: Plan[];
   subscription: Subscription | null;
-  payments: Payment[];
+  payments: Payment | null;
   currentPayment: Payment | null;
   loading: boolean;
 
@@ -56,7 +56,7 @@ type PaymentState = {
 export const usePaymentStore = create<PaymentState>((set, get) => ({
   plans: [],
   subscription: null,
-  payments: [],
+  payments: null,
   loading: false,
   currentPayment: null,
 
@@ -88,7 +88,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       set({
         subscription,
-        payments: [payment], // overwrite with latest
+        payments: payment, // only one
       });
 
       toast.success("Subscription created. Complete payment.");
@@ -107,13 +107,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     try {
       await axiosInstance.post(`/payment/pay/${paymentId}`);
 
-      // update local state
-      const updatedPayments = get().payments.map((p) =>
-        p.id === paymentId ? { ...p, status: "completed" } : p
-      );
-
       set({
-        payments: updatedPayments,
+        payments: get().payments
+          ? { ...get().payments!, status: "completed" }
+          : null,
         subscription: get().subscription
           ? { ...get().subscription!, status: "active" }
           : null,
@@ -145,7 +142,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           error?.response?.data?.message || "Failed to fetch subscription"
         );
       }
-      set({ subscription: null, payments: [] });
+      set({ subscription: null, payments: null });
     } finally {
       set({ loading: false });
     }
