@@ -72,6 +72,8 @@ It doesn’t just reply — it **remembers, adapts, and evolves** based on conve
 
 * Node.js
 * Express
+* PostgreSQL (transactional data)
+* MongoDB (primary data store)
 * Redis (Upstash)
 * BullMQ
 
@@ -118,6 +120,27 @@ It doesn’t just reply — it **remembers, adapts, and evolves** based on conve
 * Memory Queue
 
 ---
+
+## 🗄 Data & Verification System
+
+Partner AI uses a hybrid data approach:
+
+* **MongoDB:** stores user data, conversations, and AI memory
+* **PostgreSQL:** handles transactional workflows for model verification and payment states
+* **Redis:** caching and short-term memory
+* **Vector DB (Pinecone):** long-term semantic memory
+
+### Model Verification Flow
+
+* AI models can be gated behind a **payment/verification system**
+* Uses PostgreSQL transactions to ensure **consistent subscription and access states**
+* Verified models are enabled based on user payment status
+* MongoDB remains the primary system, while PostgreSQL ensures **reliable state transitions**
+
+This separation allows flexible AI data handling while maintaining consistency for critical operations.
+
+---
+
 
 ## 🌐 Frontend Features (Web)
 
@@ -181,6 +204,7 @@ OPENAI_API_KEY=
 EMBEDDINGS_WORKER_LINK=
 UPSTASH_REDIS_URL=
 MONGODB_URI=
+NEON_DB=
 JWT_SECRET=
 Your open ai keys and email id for brevo
 ```
