@@ -116,7 +116,7 @@ const messageWorker = new Worker(
                 let result = "CONTINUE" 
                 if ( timeDifference > 60 * 60 * 1000){
                     const decision = await openai.chat.completions.create({
-                        model: "meta/llama-3.1-8b-instruct",
+                        model: "nvidia/nemotron-3-super-120b-a12b",
                         messages: [
                             {
                                 role: "system",
@@ -360,7 +360,7 @@ const messageWorker = new Worker(
         systemPrompt += `Previous Conversation:\n${history}\n\n`
 
         const decision = await openai.chat.completions.create({
-            model: "meta/llama3-70b-instruct",
+            model: "nvidia/nemotron-3-super-120b-a12b",
             messages: [
                 {
                     role: "system",
@@ -635,7 +635,7 @@ const messageWorker = new Worker(
             
             try {
                 const memResult = await openai.chat.completions.create({
-                model: "meta/llama-3.1-8b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                     messages: [
                         {
                             role: "system",
@@ -872,7 +872,7 @@ const messageWorker = new Worker(
             `;
 
         const response = await openai.chat.completions.create({
-            model: "meta/llama-3.1-405b-instruct",
+            model: "nvidia/nemotron-3-super-120b-a12b",
             messages: [
                 {
                     role: "system",
@@ -909,7 +909,7 @@ const messageWorker = new Worker(
                 ["hey", "how u doing"]
                 `;
             const cleanedOutput = await openai.chat.completions.create({
-                model: "meta/llama-3.1-8b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                 messages: [
                     {
                         role: "system",
@@ -1203,7 +1203,7 @@ const messageWorker = new Worker(
                 `;
         
         const res = await openai.chat.completions.create({
-            model: "meta/llama3-70b-instruct",
+            model: "nvidia/nemotron-3-super-120b-a12b",
             messages: [
                 {
                     role: "system",
@@ -1343,7 +1343,7 @@ const messageWorker = new Worker(
                 `;
 
         const output = await openai.chat.completions.create({
-            model: "meta/llama3-8b-instruct",
+            model: "nvidia/nemotron-3-super-120b-a12b",
             messages: [
                 {
                     role: "system",
@@ -1635,7 +1635,7 @@ const messageWorker = new Worker(
                 `
 
             const response = await openai.chat.completions.create({
-                model: "meta/llama-3.1-405b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                 messages: [
                     {
                         role: "system",

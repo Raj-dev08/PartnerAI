@@ -181,7 +181,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
                                     `
 
             const respones = await openai.chat.completions.create({
-                model: "meta/llama3-70b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                 messages: [
                     {
                         role: "system",
@@ -475,7 +475,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
                 `;
             
             const respones = await openai.chat.completions.create({
-                model: "meta/llama-3.1-8b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                 messages: [
                     {
                         role: "system",
@@ -566,7 +566,7 @@ const dbWorker = new Worker("db-queue", async (job) => {
             `
     
             const updatedMemoryResponse = await openai.chat.completions.create({
-                model: "meta/llama3-70b-instruct",
+                model: "nvidia/nemotron-3-super-120b-a12b",
                 messages: [
                     {
                         role: "system",
